@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block head %}
+<title>Registration</title>
+<link rel="stylesheet" href="/static/css/style_register.css" type="text/css"/>
+{% endblock %}
+
+{% block body %}
+<div class="container">
+    <header>GerCorefApp Registration</header><br>
+    <h5>Password must be at least 8 characters long!</h5><br>
+    <form action="/register" method="POST">
+        <div class="error-text"></div>
+        <input type="text" name="username" placeholder="Username" required>
+        <input type="email" name="email" placeholder="E-Mail" required>
+        <input type="password" id="pass1" name="password" placeholder="Password" onkeyup="active()" required>
+        <input type="password" id="pass2" name="confirmpass" placeholder="Confirm Password" required disabled>
+        <button type="submit" id="submitBtn" name="submit" disabled>Register</button>
+    </form>
+    <script src="static/js/register.js"></script>
+</div>
+{% endblock %}

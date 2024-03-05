@@ -1,0 +1,11 @@
+.page-button {
+    font-size: 25px !important;
+    width: 28%;
+    height: 30px;
+}
+
+.skip-button {
+    font-size: 25px !important;
+    width: fit-content;
+    height: 30px;
+}
