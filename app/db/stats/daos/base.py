@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from copy import deepcopy
 from datetime import timedelta, datetime
 from functools import wraps
 
@@ -87,12 +88,11 @@ class SingleDocStatsDAO(AbstractStatsDAO):
 
     def find_all_stats(self, projection=None, generate_response=False, get_cursor=False, db_session=None):
         projection = self.build_projection(projection)
-        result = self.collection.find(self._fetch_stat_query, projection, session=db_session)
         if get_cursor:
-            if projection:
-                projection.clear()
-            return result
-        result = list(result)
+            projection_copy = deepcopy(projection) if projection else projection
+            result = self.collection.find(self._fetch_stat_query, projection_copy, session=db_session)
+        else:
+            result = list(self.collection.find(self._fetch_stat_query, projection, session=db_session))
         if projection:
             projection.clear()
         return self.to_response(result) if generate_response else result
@@ -102,14 +102,13 @@ class SingleDocStatsDAO(AbstractStatsDAO):
         projection = self.build_projection(projection)
         self._in_ids_op['$in'] = doc_ids
         self._fetch_stat_query['_id'] = self._in_ids_op
-        result = self.collection.find(self._fetch_stat_query, projection, session=db_session)
+        if get_cursor:
+            projection_copy = deepcopy(projection) if projection else projection
+            result = self.collection.find(deepcopy(self._fetch_stat_query), projection_copy, session=db_session)
+        else:
+            result = list(self.collection.find(self._fetch_stat_query, projection, session=db_session))
         del self._fetch_stat_query['_id']
         del self._in_ids_op['$in']
-        if get_cursor:
-            if projection:
-                projection.clear()
-            return result
-        result = list(result)
         if projection:
             projection.clear()
         return self.to_response(result) if generate_response else result

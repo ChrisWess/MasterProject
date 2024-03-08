@@ -125,6 +125,8 @@ class ConceptDAO(JoinableDAO):
                 if isinstance(noun_phrase, list):
                     noun_phrase = ' '.join(noun_phrase)
                 noun_phrase = self.preproc.as_noun_phrase(noun_phrase)
+                if noun_phrase is None:
+                    return None
             for adj in noun_phrase.adjs:
                 idx = corpus.find_lemma_idx(adj.lemma_, db_session)
                 if idx is None:

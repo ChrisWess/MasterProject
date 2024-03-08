@@ -70,49 +70,51 @@ class VisualFeatureDAO(JoinableDAO):
             projection.clear()
         return self.to_response(result) if generate_response else result
 
-    def find_by_object(self, obj_id, projection=None, generate_response=False, db_session=None):
-        anno_ids = ObjectDAO().find_all_annotation_ids(obj_id, db_session=db_session)
-        if anno_ids is None:
-            return None
-        return self.find_by_annotations(anno_ids, projection, generate_response, db_session)
+    def find_by_object(self, obj_id, projection=None, generate_response=False, db_session=None, get_cursor=False):
+        return self.simple_match('objectId', obj_id, projection,
+                                 generate_response, db_session, get_cursor=get_cursor)
 
-    def add(self, anno_id, concept_id, bboxs, generate_response=False, db_session=None):
+    def add(self, obj_id, anno_id, concept_id, bboxs, generate_response=False, db_session=None):
         user_id = UserDAO().get_current_user_id()
-        feat = VisualFeature(annotation_id=anno_id, concept_id=concept_id, bboxs=bboxs, created_by=user_id)
+        feat = VisualFeature(object_id=obj_id, annotation_id=anno_id, concept_id=concept_id,
+                             bboxs=bboxs, created_by=user_id)
         return self.insert_doc(feat, generate_response=generate_response, db_session=db_session)
 
-    def add_secure(self, anno_id, concept_id, bboxs, parent_bbox=None, generate_response=False, db_session=None):
+    def add_secure(self, obj_id, anno_id, concept_id, bboxs, parent_bbox=None, generate_response=False,
+                   db_session=None):
         user_id = UserDAO().get_current_user_id()
         if parent_bbox is None:
-            parent_bbox = ObjectDAO().find_bbox_by_annotation(anno_id, db_session=db_session)
+            parent_bbox = ObjectDAO().find_bbox_by_id(obj_id, db_session=db_session)
             if parent_bbox is None:
                 raise ValueError(f'Annotation with ID {anno_id} could not be found!')
             parent_bbox = (parent_bbox['tlx'], parent_bbox['tly'], parent_bbox['brx'], parent_bbox['bry'])
         VisualFeatureDAO.validate_bboxs_fit_into_parent(bboxs, parent_bbox)
-        feat = VisualFeature(annotation_id=anno_id, concept_id=concept_id, bboxs=bboxs, created_by=user_id)
+        feat = VisualFeature(object_id=obj_id, annotation_id=anno_id, concept_id=concept_id,
+                             bboxs=bboxs, created_by=user_id)
         return self.insert_doc(feat, generate_response=generate_response, db_session=db_session)
 
-    def _collect_features(self, anno_id, concept_ids, bboxs, user_id, parent_bbox, db_session):
+    def _collect_features(self, obj_id, anno_id, concept_ids, bboxs, user_id, parent_bbox, db_session):
         if parent_bbox is None:
-            parent_bbox = ObjectDAO().find_bbox_by_annotation(anno_id, db_session=db_session)
+            parent_bbox = ObjectDAO().find_bbox_by_id(obj_id, db_session=db_session)
             parent_bbox = (parent_bbox['tlx'], parent_bbox['tly'], parent_bbox['brx'], parent_bbox['bry'])
         for i, (cid, bbs) in enumerate(zip(concept_ids, bboxs)):
             VisualFeatureDAO.validate_bboxs_fit_into_parent(bbs, parent_bbox)
-            self._helper_list.append(VisualFeature(annotation_id=anno_id, concept_id=cid,
+            self._helper_list.append(VisualFeature(object_id=obj_id, annotation_id=anno_id, concept_id=cid,
                                                    bboxs=bbs, created_by=user_id))
         return concept_ids
 
-    def add_many(self, anno_ids, concept_ids, bboxs, parent_bboxs=None, generate_response=False, db_session=None):
+    def add_many(self, obj_ids, anno_ids, concept_ids, bboxs, parent_bboxs=None,
+                 generate_response=False, db_session=None):
         user_id = UserDAO().get_current_user_id()
         if isinstance(anno_ids, ObjectId):
-            self._collect_features(anno_ids, concept_ids, bboxs, user_id, parent_bboxs, db_session)
+            self._collect_features(obj_ids, anno_ids, concept_ids, bboxs, user_id, parent_bboxs, db_session)
         else:
             if parent_bboxs is None:
-                for aid, cids, bbs in zip(anno_ids, concept_ids, bboxs):
-                    self._collect_features(aid, cids, bbs, user_id, parent_bboxs, db_session)
+                for oid, aid, cids, bbs in zip(obj_ids, anno_ids, concept_ids, bboxs):
+                    self._collect_features(oid, aid, cids, bbs, user_id, parent_bboxs, db_session)
             else:
-                for i, (aid, cids, bbs) in enumerate(zip(anno_ids, concept_ids, bboxs)):
-                    self._collect_features(aid, cids, bbs, user_id, parent_bboxs[i], db_session)
+                for i, (oid, aid, cids, bbs) in enumerate(zip(obj_ids, anno_ids, concept_ids, bboxs)):
+                    self._collect_features(oid, aid, cids, bbs, user_id, parent_bboxs[i], db_session)
         response = self.insert_docs(self._helper_list, generate_response=generate_response, db_session=db_session)
         if not generate_response:
             self._helper_list.clear()

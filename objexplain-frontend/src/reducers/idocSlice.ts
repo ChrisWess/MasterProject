@@ -6,6 +6,7 @@ interface iDocState {
     showObjects: boolean;
     objsVis: boolean[] | undefined;
     document: ImageDocument | undefined;
+    imgUrl: string | undefined;
     annoMode: boolean;
     labelMap: [string, Label][] | undefined;
     numPrecached: number;
@@ -19,6 +20,7 @@ const initialState: iDocState = {
     showObjects: true,
     objsVis: undefined,
     document: undefined,
+    imgUrl: undefined,
     annoMode: false,
     labelMap: undefined,
     numPrecached: 6,
@@ -45,11 +47,19 @@ export const idocSlice = createSlice({
         },
         setDoc: (state, action: PayloadAction<ImageDocument>) => {
             state.document = action.payload;
-            state.objsVis = Array(action.payload.objects?.length).fill(true);
         },
         clearDoc: (state) => {
             state.document = undefined;
             state.objsVis = undefined;
+        },
+        initVisibleObjs: (state, action: PayloadAction<number>) => {
+            state.objsVis = Array(action.payload).fill(true);
+        },
+        setImgUrl: (state, action: PayloadAction<string>) => {
+            state.imgUrl = action.payload;
+        },
+        clearImgUrl: (state) => {
+            state.imgUrl = undefined;
         },
         enableAnnoMode: (state) => {
             state.annoMode = true;
@@ -67,6 +77,9 @@ export const idocSlice = createSlice({
         },
         setLabelMap: (state, action: PayloadAction<[string, Label][]>) => {
             state.labelMap = action.payload;
+        },
+        resetLabelMap: (state) => {
+            state.labelMap = undefined;
         },
         nextIdx: (state) => {
             if (state.historyIdx > 0) {
@@ -183,9 +196,9 @@ export const idocSlice = createSlice({
 // actions
 export const {
     switchObjectsVisible, switchObjVisible, setDoc,
-    clearDoc, setLabelMap,
-    enableAnnoMode, disableAnnoMode, nextIdx,
-    prevIdx, loadInNewDocs, loadInOlderDocs,
+    clearDoc, initVisibleObjs, setImgUrl, clearImgUrl,
+    setLabelMap, resetLabelMap, enableAnnoMode, disableAnnoMode,
+    nextIdx, prevIdx, loadInNewDocs, loadInOlderDocs,
 } = idocSlice.actions;
 
 export default idocSlice.reducer;

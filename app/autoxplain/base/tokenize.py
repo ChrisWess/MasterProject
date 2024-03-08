@@ -70,8 +70,10 @@ class SpacyTokenizer(Tokenizer):
         text = [token.text for token in self.toknizr.tokenizer(text)]
         return list(filter(lambda f: not re.match(r"\s+|^[^ia]$", f), text))
 
-    def analyze(self, text):
-        return self.toknizr(remove_non_ascii(text))
+    def analyze(self, text, allow_non_ascii=False):
+        if not allow_non_ascii:
+            text = remove_non_ascii(text)
+        return self.toknizr(text)
 
     @staticmethod
     def get_num_tokens(out):

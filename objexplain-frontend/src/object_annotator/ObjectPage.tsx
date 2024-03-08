@@ -1,6 +1,6 @@
 import Box from '@mui/material/Box';
 import {useNavigate, useOutletContext, useParams} from "react-router-dom";
-import {getRequest} from "../api/requests";
+import {getRequest, loadImage} from "../api/requests";
 import {FC, useEffect, useRef} from "react";
 import {useDispatch, useSelector} from "react-redux";
 import {ProjectStats} from "../api/models/project";
@@ -11,55 +11,52 @@ import {Label} from "../api/models/label";
 import ObjectControlPanel from "./ObjectControl";
 import {ImageDocument} from "../api/models/imgdoc";
 import {setObjectIdx} from "../reducers/objectSlice";
-import {setDoc, setLabelMap} from "../reducers/idocSlice";
+import {setDoc, setImgUrl, setLabelMap} from "../reducers/idocSlice";
 import {mapLabels} from "../document/DocControl";
 
 
-export const FEATURE_COLORS = [
-    '#9A6324',
-    '#808000',
-    '#469990',
-    '#FFD8B1',
-    '#DCBEFF',
-    '#404040',
-    '#AAFFC3',
-    '#F032E6',
-    '#6495ED',
-    '#228B22',
-]
+export const cropImage = (canvasRef: any, imgUrl: string, newX: number, newY: number,
+                          newWidth: number, newHeight: number) => {
+    let canvas = canvasRef.current;
+    if (imgUrl && canvas !== null) {
+        //create an image object from the path
+        const originalImage = new Image();
+        originalImage.src = imgUrl;
+
+        //initialize the canvas object
+        const ctx = canvas.getContext('2d')!;
+
+        //wait for the image to finish loading
+        originalImage.addEventListener('load', function () {
+            if (canvas) {
+                //set the canvas size to the new width and height
+                canvas.width = newWidth;
+                canvas.height = newHeight;
+
+                //draw the image
+                ctx.drawImage(originalImage, newX, newY, newWidth, newHeight, 0, 0, newWidth, newHeight);
+            }
+        });
+    }
+}
 
 const ObjectPage: FC = () => {
     const {projectName, docId, objIdx} = useParams();
     const context: any = useOutletContext();
-    const imgContainer = useRef<HTMLDivElement>(null)
+    const imgContainer = useRef<HTMLDivElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
 
     const navigate = useNavigate();
     const dispatch = useDispatch();
     // global state (redux)
-    const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
-    const labelsMap: Map<string, Label> | undefined = useSelector((state: any) => state.iDoc.labelMap);
     const project: ProjectStats | undefined = useSelector((state: any) => state.mainPage.currProject);
+    const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
+    const imgUrl: string | undefined = useSelector((state: any) => state.iDoc.imgUrl);
+    const labelsMap: [string, Label][] | undefined = useSelector((state: any) => state.iDoc.labelMap);
 
-    const cropImage = (imagePath: string, newX: number, newY: number, newWidth: number, newHeight: number) => {
-        //create an image object from the path
-        const originalImage = new Image();
-        originalImage.src = imagePath;
-
-        //initialize the canvas object
-        const canvas: any = document.getElementById('canvas');
-        const ctx = canvas?.getContext('2d');
-
-        //wait for the image to finish loading
-        originalImage.addEventListener('load', function () {
-
-            //set the canvas size to the new width and height
-            canvas.width = newWidth;
-            canvas.height = newHeight;
-
-            //draw the image
-            ctx.drawImage(originalImage, newX, newY, newWidth, newHeight, 0, 0, newWidth, newHeight);
-        });
-    }
+    // This page is only visible to Project Managers and Admins and shows all annotations of the users.
+    // The Annotation View shows only the annotation of single user with all its details. An annotator
+    // sees only his own annotation.
 
     const loadProject = async () => {
         if (projectName) {
@@ -76,18 +73,21 @@ const ObjectPage: FC = () => {
         navigate('/notfound404')
     }
 
+    const loadDocImage = async (imgDoc: ImageDocument) => {
+        return await loadImage('idoc/img', imgDoc._id)
+    }
+
     useEffect(() => {
         if (!project) {
             loadProject().then(projectData => projectData && dispatch(setProject(projectData.result)))
         }
-        let document = idoc;
-        if (document) {
-            dispatch(setTitle(document.name));
-        } else {
+        if (!idoc) {
             loadDoc().then(idocData => {
                 if (idocData) {
                     dispatch(setDoc(idocData.result));
-                    dispatch(setTitle(idocData.result.name));
+                    loadDocImage(idocData.result).then(file => {
+                        file && dispatch(setImgUrl(file))
+                    });
                 }
             })
         }
@@ -98,11 +98,19 @@ const ObjectPage: FC = () => {
         if (!labelsMap) {
             mapLabels(idoc).then(lm => lm && dispatch(setLabelMap(lm)));
         }
+    }, [idoc, labelsMap]);
+
+    useEffect(() => {
         if (objIdx) {
             let idx = parseInt(objIdx);
-            if (idoc && idoc.objects) {
+            if (imgUrl && idoc && idoc.objects) {
                 if (idx >= 0 && idx < idoc.objects.length) {
                     dispatch(setObjectIdx(idx));
+                    dispatch(setTitle(`Object ${idx + 1} of ${idoc.name}`));
+                    let obj = idoc.objects[idx];
+                    let newWidth = obj.brx - obj.tlx
+                    let newHeight = obj.bry - obj.tly
+                    cropImage(canvasRef, imgUrl, obj.tlx, obj.tly, newWidth, newHeight)
                 } else {
                     navigate('/notfound404')
                 }
@@ -110,7 +118,9 @@ const ObjectPage: FC = () => {
         } else {
             navigate('/notfound404')
         }
-    }, [idoc]);
+    }, [idoc, imgUrl]);
+
+    // TODO: save user interaction as preferences and determine the best layout for a user with these stats
 
     return (
         <Box height='100%'>
@@ -125,6 +135,8 @@ const ObjectPage: FC = () => {
                     position: 'absolute', display: 'block',
                     left: '50%', transform: 'translateX(-50%)'
                 }}>
+                    {imgUrl &&
+                        <canvas ref={canvasRef} style={{height: '100%'}}/>}
                 </Box>
             </Box>
             <Box sx={{display: 'flex', width: '100%'}}>

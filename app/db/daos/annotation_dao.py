@@ -1,11 +1,12 @@
 import string
+from datetime import datetime
 
 from bson import ObjectId
 from pydantic import ValidationError
 from pymongo import ASCENDING
 
 from app import application
-from app.db.daos.base import JoinableDAO, dao_update, dao_query
+from app.db.daos.base import JoinableDAO, dao_update, dao_query, BaseDAO
 from app.db.daos.concept_dao import ConceptDAO
 from app.db.daos.label_dao import LabelDAO
 from app.db.daos.user_dao import UserDAO
@@ -181,7 +182,7 @@ class AnnotationDAO(JoinableDAO):
         #  clients (the frontend) or put the annotation processing into a separate module that works
         #  through a queue of incoming raw annotations.
         # TODO: collect concepts over all annotations and find_or_add all these concepts in one step
-        #  (need to keep order of concepts ofc in order to correctly assign concept IDs to annos)
+        #  (need to keep order of concepts in order to correctly assign concept IDs to annos)
         if not user_id:
             user_id = UserDAO().get_current_user_id()
         if annotations:
@@ -315,9 +316,146 @@ class AnnotationDAO(JoinableDAO):
         self.add_query("_id", anno_id)
         self.add_update('text', new_text)
 
+    @staticmethod
+    def _reconstruct_sentence_from_tokens(tokens, start, stop):
+        concept_text, split = '', False
+        for i in range(start, stop):
+            tok = tokens[i]
+            if split or (len(tok) == 1 and tok in punct_set):
+                split = tok == '-'
+            else:
+                tok = ' ' + tok
+            concept_text = concept_text + tok
+        return concept_text
+
+    @staticmethod
+    def _update_concept_mask(new_cid, concepts, mask, start, stop):
+        if concepts:
+            last_overridden_idx = None
+            curr_cidx = mask[start]  # concept idx at start
+            if curr_cidx >= 0:
+                # remove intersecting concept at start
+                for i in range(start - 1, -1, -1):
+                    if mask[i] == curr_cidx:
+                        mask[i] = -1
+                    else:
+                        break
+                last_overridden_idx = curr_cidx + 1
+            else:
+                if curr_cidx < -1:
+                    # remove intersecting label marker at start, if present
+                    is_intersecting = True
+                    for i in range(start - 1, -1, -1):
+                        val = mask[i]
+                        if is_intersecting:
+                            if val == curr_cidx:
+                                mask[i] = -1
+                            else:
+                                is_intersecting = False
+                        elif val >= 0:
+                            last_overridden_idx = val + 1
+                            break
+                # retrieve first upcoming concept after start
+                for i in range(start, len(mask)):
+                    val = mask[i]
+                    if val >= 0:
+                        curr_cidx = val
+                        last_overridden_idx = val if i >= stop else val + 1
+                        break
+                else:
+                    curr_cidx = len(concepts)
+            for i in range(start, stop):
+                val = mask[i]
+                if val > curr_cidx:
+                    last_overridden_idx = val + 1
+                mask[i] = curr_cidx
+            if last_overridden_idx is None:
+                concepts.append(new_cid)
+            else:
+                for i in range(curr_cidx, last_overridden_idx):
+                    del concepts[i]
+                concepts.insert(curr_cidx, new_cid)
+                diff = last_overridden_idx - curr_cidx - 1
+                is_intersecting = True
+                for i in range(stop, len(mask)):
+                    val = mask[i]
+                    if val >= 0:
+                        if is_intersecting and val == last_overridden_idx:
+                            mask[i] = -1
+                            continue
+                        else:
+                            mask[i] = val - diff
+                    is_intersecting = False
+        else:
+            concepts.append(new_cid)
+            # remove intersecting label markers at start and end
+            rmv_val = mask[start]
+            if rmv_val != -1:
+                for i in range(start - 1, -1, -1):
+                    if mask[i] == rmv_val:
+                        mask[i] = -1
+                    else:
+                        break
+            rmv_val = mask[stop]
+            if rmv_val != -1:
+                for i in range(stop, len(mask)):
+                    if mask[i] == rmv_val:
+                        mask[i] = -1
+                    else:
+                        break
+            for i in range(start, stop):
+                mask[i] = 0
+
+    def add_or_update_concept_at_range(self, anno_id, token_range, generate_response=False, db_session=None):
+        """
+        Add a `Concept` with the given key or Id to the specified `Annotation` at the given range of tokens
+        :param anno_id: Id of the annotation
+        :param token_range: tuple of (start, stop) integers corresponding to token indices
+        :param generate_response:
+        :param db_session:
+        :return: Update result
+        """
+        start = token_range[0]
+        stop = token_range[1] + 1
+        assert 0 <= start < stop
+        anno = self.find_by_nested_id(anno_id, projection=('tokens', 'conceptMask', 'conceptIds'))
+        tokens = anno.pop('tokens')
+        concept_text = self._reconstruct_sentence_from_tokens(tokens, start, stop)
+        concept_dao = ConceptDAO()
+        np = concept_dao.preproc.as_noun_phrase(concept_text)
+        if np is None:
+            return None
+        cid = concept_dao.find_doc_or_add(np, db_session)[1]['_id']
+        mask = anno['conceptMask']
+        assert stop <= len(mask)
+        concepts = anno['conceptIds']
+        self._update_concept_mask(cid, concepts, mask, start, stop)
+        self._query_matcher['objects.annotations._id'] = anno_id
+        self._set_field_op['objects.$[].annotations.$[x].conceptMask'] = mask
+        self._set_field_op['objects.$[].annotations.$[x].conceptIds'] = concepts
+        self._set_field_op['objects.$[].annotations.$[x].updatedAt'] = datetime.now()
+        self._update_commands['$set'] = self._set_field_op
+        self._field_check['x._id'] = anno_id
+        self._array_filters.append(self._field_check)
+        result = self.collection.update_one(self._query_matcher, self._update_commands,
+                                            array_filters=self._array_filters, session=db_session)
+        self._array_filters.clear()
+        self._field_check.clear()
+        self._update_commands.clear()
+        self._set_field_op.clear()
+        self._query_matcher.clear()
+        return self.to_response(result, BaseDAO.UPDATE) if generate_response else result
+
     @dao_update(update_many=False)
-    def update_concept_idx(self, anno_id, concept, bbox):
-        # TODO: if concept is int, then update the index, if its string, update the concept that matches the string ID
+    def add_concept_nouns_specified(self, anno_id, token_range, noun_token_idxs):
+        """
+        Add a `Concept` with the given key or Id to the specified `Annotation` at the given range of tokens
+        :param anno_id: Id of the annotation
+        :param token_range: Id of the annotation
+        :param noun_token_idxs: Id or key of the concept
+        :return: Update result
+        """
+        # TODO: add all words that are not stop words and not marked as nouns as adjectives
         return {"_id": anno_id}
 
     def delete_all(self, generate_response=False, db_session=None):

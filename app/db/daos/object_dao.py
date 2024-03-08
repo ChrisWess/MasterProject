@@ -1,3 +1,4 @@
+from datetime import datetime
 from io import BytesIO
 
 from PIL import Image
@@ -43,7 +44,7 @@ class ObjectDAO(JoinableDAO):
             {'$project':
                 {
                     'objects.tlx': 1, 'objects.tly': 1, 'objects.brx': 1, 'objects.bry': 1,
-                    'objects.annotations.conceptIds': 1
+                    'objects.annotations.conceptIds': 1, 'objects._id': 1,
                 }
             },
         ]
@@ -230,6 +231,15 @@ class ObjectDAO(JoinableDAO):
         """
         return self.simple_match("labelId", label_id, projection, generate_response, db_session)
 
+    def find_bbox_by_id(self, obj_id, db_session=None):
+        """
+        Find `DetectedObject`s bounding box by the `DetectedObject`'s ID.
+        :param obj_id: Id of the object
+        :param db_session:
+        :return: List of object bounding boxes if found
+        """
+        return self.find_by_id(obj_id, ('tlx', 'tly', 'brx', 'bry'), False, db_session)
+
     def find_bbox_by_annotation(self, anno_id, generate_response=False, db_session=None):
         """
         Find `DetectedObject`s bounding box where the `DetectedObject` contains the annotation with the given ID.
@@ -243,7 +253,7 @@ class ObjectDAO(JoinableDAO):
 
     def find_all_annotation_ids(self, obj_id, db_session=None):
         """
-        Find `DetectedObject`s Annotations by their IDs.
+        Find `DetectedObject`s Annotations by their parent object.
         :param obj_id: Id of the object
         :param db_session:
         :return: List of annotation IDs if found
@@ -310,9 +320,21 @@ class ObjectDAO(JoinableDAO):
     @dao_update(update_many=False)
     def update_bbox(self, obj_id, bbox):
         self.add_query("_id", obj_id)
+        now = datetime.now()
+        upd_prefix = "objects.$[]."
         for coord, val in zip(self.bbox_alias_mapping.values(), bbox):
-            self._set_field_op[coord] = val
+            self._set_field_op[upd_prefix + coord] = val
+        self._set_field_op['updatedAt'] = now
+        self._set_field_op[upd_prefix + 'updatedAt'] = now
         self._update_commands['$set'] = self._set_field_op
+
+    @dao_update(update_many=False)
+    def update_label(self, obj_id, label_id):
+        self.add_query("_id", obj_id)
+        self.add_update('labelId', label_id)
+        now = datetime.now()
+        self._set_field_op['updatedAt'] = now
+        self.add_update('updatedAt', now)
 
     def delete_all(self, generate_response=False, db_session=None):
         raise NotImplementedError

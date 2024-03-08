@@ -117,3 +117,26 @@ def annotate():
         err_msg = "The object ID you provided is not a valid ID!"
         application.logger.error(err_msg)
         abort(404, err_msg)
+
+
+@application.route('/annotation', methods=['PUT'])
+def update_concept():
+    args = request.json
+    if "annoId" not in args or "tokenStart" not in args or "tokenEnd" not in args:
+        err_msg = 'Your request body must contain the key-value pairs with keys "annoId", "tokenStart" and "tokenEnd"!'
+        application.logger.error(err_msg)
+        abort(400, err_msg)
+    try:
+        anno_id = ObjectId(args["annoId"])
+        response = AnnotationDAO().add_or_update_concept_at_range(anno_id,
+                                                                  (args["tokenStart"], args["tokenEnd"]),
+                                                                  generate_response=True)
+        if response is None:
+            err_msg = "The concept could not be analysed correctly! No noun phrase found!"
+            application.logger.error(err_msg)
+            abort(400, err_msg)
+        return response
+    except InvalidId:
+        err_msg = "The Annotation ID you provided is not a valid ID!"
+        application.logger.error(err_msg)
+        abort(404, err_msg)

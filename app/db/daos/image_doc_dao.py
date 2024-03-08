@@ -1,5 +1,6 @@
 import json
 from base64 import b64decode
+from copy import deepcopy
 from io import BytesIO
 from json import loads
 from math import ceil
@@ -194,10 +195,13 @@ class ImgDocDAO(JoinableDAO):
         :return: List of all `ImgDoc` objects
         """
         projection = self.build_projection(projection)
-        result = self.collection.find(self._query_matcher, projection, session=db_session)
-        result = self._apply_sort_limit(result)
-        if not get_cursor:
-            result = list(result)
+        if get_cursor:
+            projection_copy = deepcopy(projection) if projection else projection
+            result = self.collection.find(self._query_matcher, projection_copy, session=db_session)
+            result = self._apply_sort_limit(result, True)
+        else:
+            result = self.collection.find(self._query_matcher, projection, session=db_session)
+            result = list(self._apply_sort_limit(result))
         if projection:
             projection.clear()
         return self.to_response(result) if generate_response else result
@@ -213,12 +217,17 @@ class ImgDocDAO(JoinableDAO):
         """
         if projection:
             projection = self.build_projection(projection, False)
-            result = self.collection.find(self._query_matcher, projection, session=db_session)
+            if get_cursor:
+                projection_copy = deepcopy(projection) if projection else projection
+                result = self.collection.find(self._query_matcher, projection_copy, session=db_session)
+            else:
+                result = self.collection.find(self._query_matcher, projection, session=db_session)
         else:
             result = self.collection.find(session=db_session)
-        result = self._apply_sort_limit(result)
-        if not get_cursor:
-            result = list(result)
+        if get_cursor:
+            result = self._apply_sort_limit(result, True)
+        else:
+            result = list(self._apply_sort_limit(result))
         if projection:
             projection.clear()
         return result
@@ -240,10 +249,13 @@ class ImgDocDAO(JoinableDAO):
             doc_ids = self._helper_list
         self._in_query['$in'] = doc_ids
         self._query_matcher["_id"] = self._in_query
-        result = self.collection.find(self._query_matcher, projection, session=db_session)
-        result = self._apply_sort_limit(result)
-        if not get_cursor:
-            result = list(result)
+        if get_cursor:
+            projection_copy = deepcopy(projection) if projection else projection
+            result = self.collection.find(deepcopy(self._query_matcher), projection_copy, session=db_session)
+            result = self._apply_sort_limit(result, True)
+        else:
+            result = self.collection.find(self._query_matcher, projection, session=db_session)
+            result = list(self._apply_sort_limit(result))
             if doc_ids == self._helper_list:
                 self._helper_list.clear()
         self._in_query.clear()
@@ -385,9 +397,9 @@ class ImgDocDAO(JoinableDAO):
         image, thumb, width, height = self.process_image_data(image)
         doc = ImgDoc(project_id=proj_id, name=name, fname=fname, width=width,
                      height=height, created_by=user_id, objects=objects)
-        # TODO: multi-document transactions raise an error! Find workaround for ensuring files are not
-        #  stored, if the transaction aborts. Otherwise, there will be unreferenced images stored in the
-        #  gridfs collection that would take up disk space without any use.
+        # TODO: multi-document transactions with gridfs raise an error! Find workaround for ensuring files
+        #  are not stored, if the transaction aborts. Otherwise, there will be unreferenced images
+        #  stored in the gridfs collection that would take up disk space without any use.
         return self.insert_doc(doc, image, thumb, proj_id, has_annos, has_unanno_objs,
                                generate_response=generate_response, db_session=db_session)
 

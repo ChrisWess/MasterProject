@@ -38,6 +38,7 @@ class BoundingBox(BaseModel):
 
 
 class VisualFeature(UserCreationModel):
+    object_id: PyObjectId = Field(alias="objectId")
     annotation_id: PyObjectId = Field(alias="annotationId")
     concept_id: PyObjectId = Field(alias="conceptId")
     # Bounding boxes are defined with respect to coordinates of the object's bounding box
@@ -54,6 +55,7 @@ class VisualFeature(UserCreationModel):
     class Config:
         _json_example = {
             "_id": ObjectId("65ac01674e1ed269cbe2f9e7"),
+            "objectId": ObjectId("6560bb8c49d58b986276c630"),
             "annotationId": ObjectId("6560badba00004fb3359631e"),
             "conceptId": ObjectId("65610d601e91b2dff82f93ba"),
             "bboxs": [BoundingBox.Config._json_example],

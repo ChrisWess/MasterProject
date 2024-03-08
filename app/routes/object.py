@@ -6,6 +6,7 @@ from flask import request, abort, session, make_response, send_file
 from flask_login import login_required
 
 from app import application
+from app.db.daos.label_dao import LabelDAO
 from app.db.daos.object_dao import ObjectDAO
 from app.db.daos.vis_feature_dao import VisualFeatureDAO
 
@@ -129,6 +130,10 @@ def add_annotated_object():
 @application.route('/object', methods=['PUT'])
 def update_bbox_validated():
     args = request.json
+    if 'objectId' not in args or 'bbox' not in args:
+        err_msg = 'Your request body must contain the key-value pairs "objectId" and "bbox"!'
+        application.logger.error(err_msg)
+        abort(400, err_msg)
     try:
         object_id = ObjectId(args['objectId'])
     except InvalidId:
@@ -154,7 +159,46 @@ def update_bbox_validated():
                            f" Bounding Box before executing this function. Aborting the Update...")
                 application.logger.error(err_msg)
                 abort(400, err_msg)
-    return ObjectDAO().update_bbox(object_id, bbox)
+    return ObjectDAO().update_bbox(object_id, bbox, generate_response=True)
+
+
+@application.route('/object/label', methods=['PUT'])
+def update_object_label():
+    args = request.json
+    if 'objectId' not in args or 'labelId' not in args:
+        err_msg = 'Your request body must contain the key-value pairs "objectId" and "labelId"!'
+        application.logger.error(err_msg)
+        abort(400, err_msg)
+    try:
+        object_id = ObjectId(args['objectId'])
+    except InvalidId:
+        err_msg = "The Detected Object ID you provided is not a valid ID!"
+        application.logger.error(err_msg)
+        abort(404, err_msg)
+    try:
+        label_id = ObjectId(args['labelId'])
+    except InvalidId:
+        err_msg = "The Label ID you provided is not a valid ID!"
+        application.logger.error(err_msg)
+        abort(404, err_msg)
+    return ObjectDAO().update_label(object_id, label_id, generate_response=True)
+
+
+@application.route('/object/label/new', methods=['POST'])
+def update_to_new_label():
+    args = request.json
+    if 'objectId' not in args or 'label' not in args:
+        err_msg = 'Your request body must contain the key-value pairs "objectId" and "label"!'
+        application.logger.error(err_msg)
+        abort(400, err_msg)
+    try:
+        object_id = ObjectId(args['objectId'])
+    except InvalidId:
+        err_msg = "The Detected Object ID you provided is not a valid ID!"
+        application.logger.error(err_msg)
+        abort(404, err_msg)
+    label_id = LabelDAO().add(args['label'], args.get('categories', None))['_id']
+    return ObjectDAO().update_label(object_id, label_id, generate_response=True)
 
 
 @application.route('/object/<object_id>', methods=['DELETE'])

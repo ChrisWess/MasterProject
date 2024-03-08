@@ -1,12 +1,20 @@
 import Box from '@mui/material/Box';
 import {useLoaderData, useNavigate, useOutletContext, useParams} from "react-router-dom";
 import {getRequest, loadImage} from "../api/requests";
-import {FC, useEffect, useMemo, useRef, useState} from "react";
+import {FC, useEffect, useMemo, useRef} from "react";
 import {useDispatch, useSelector} from "react-redux";
 import {ProjectStats} from "../api/models/project";
 import DocControlPanel from "./DocControl";
 import {setTitle} from "../reducers/appBarSlice";
-import {loadInNewDocs, loadInOlderDocs, nextIdx, prevIdx, setDoc} from "../reducers/idocSlice";
+import {
+    initVisibleObjs,
+    loadInNewDocs,
+    loadInOlderDocs,
+    nextIdx,
+    prevIdx,
+    setDoc,
+    setImgUrl
+} from "../reducers/idocSlice";
 import {setProject} from "../reducers/mainPageSlice";
 import {Button, Typography} from "@mui/material";
 import {DetectedObject} from "../api/models/object";
@@ -44,7 +52,6 @@ const ProjectIDocPage: FC = () => {
     const context: any = useOutletContext();
     const idoc: any = useLoaderData();
     const imgContainer = useRef<HTMLDivElement>(null);
-    const [imgUrl, setImgUrl] = useState<string>();
 
     const navigate = useNavigate();
     const dispatch = useDispatch();
@@ -56,6 +63,7 @@ const ProjectIDocPage: FC = () => {
     const histIdx: number = useSelector((state: any) => state.iDoc.historyIdx);
     const historyDocs: ImageDocument[] | undefined = useSelector((state: any) => state.iDoc.historyDocs);
     const doc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
+    const imgUrl: string | undefined = useSelector((state: any) => state.iDoc.imgUrl);
     const labelsMap: [string, Label][] | undefined = useSelector((state: any) => state.iDoc.labelMap);
     const showObjs: boolean = useSelector((state: any) => state.iDoc.showObjects);
     const objsVis: boolean[] | undefined = useSelector((state: any) => state.iDoc.objsVis);
@@ -166,7 +174,7 @@ const ProjectIDocPage: FC = () => {
                             let color = BBOX_COLORS[index % 10];
                             let label: Label | undefined = getLabel(labelsMap, obj);
                             return <Box key={obj._id} position='absolute' border='solid 5px' borderColor={color}
-                                        sx={{top: ratio * obj.tlx - 5, left: ratio * obj.tly - 5}}
+                                        sx={{top: ratio * obj.tly - 5, left: ratio * obj.tlx - 5, cursor: 'pointer'}}
                                         width={ratio * (obj.brx - obj.tlx) + 10}
                                         height={ratio * (obj.bry - obj.tly) + 10}
                                         onClick={() => {
@@ -184,7 +192,7 @@ const ProjectIDocPage: FC = () => {
         }
     }
 
-    const bboxs = useMemo(generateObjectBBoxs, [doc, imgUrl, labelsMap, objsVis])
+    const bboxs = useMemo(generateObjectBBoxs, [doc, labelsMap, objsVis])
 
     const loadProject = async () => {
         if (projectName) {
@@ -213,14 +221,12 @@ const ProjectIDocPage: FC = () => {
             loadDocImage(doc).then(file => {
                 if (file) {
                     dispatch(setTitle(doc.name));
-                    setImgUrl(file);
+                    dispatch(initVisibleObjs(doc.objects ? doc.objects.length : 0));
+                    dispatch(setImgUrl(file));
                     window.history.replaceState(null, '',
                         `/project/${encodeURIComponent(project.title)}/idoc/${doc._id}`)
                 }
             });
-            // console.log(doc._id)
-            // console.log(cacheIdx, cachedDocs)
-            // console.log(histIdx, historyDocs)
         }
     }, [doc, project]);
 
@@ -231,9 +237,6 @@ const ProjectIDocPage: FC = () => {
         }
     }, []);
 
-    // TODO: Images that are very wide will reach too far over the borders with 100% height.
-    //   Determine the width/height ratio limit after which the width should be limited =>
-    //   height can not be 100% in that case (to keep the aspect ratio in tact)
     return (
         <Box height='100%'>
             <Box height='94%'
@@ -243,13 +246,18 @@ const ProjectIDocPage: FC = () => {
                      borderColor: 'divider',
                      position: 'relative'
                  }}>
-                <Box ref={imgContainer} height='96%' onKeyDown={onArrowKeys} tabIndex={-1} sx={{
+                <Box height='96%' onKeyDown={onArrowKeys} tabIndex={-1} sx={{
                     position: 'absolute', display: 'block',
                     left: '50%', transform: 'translateX(-50%)'
                 }}>
-                    {imgUrl &&
-                        <img alt={doc ? doc.name : "preview image"} src={imgUrl} style={{height: '100%'}}/>}
-                    {showObjs && bboxs}
+                    <Box ref={imgContainer} sx={{
+                        height: '100%',
+                        transform: `scale(${doc ? Math.min(1, (1170 / 716) / (doc.width / doc.height)) : 1})`
+                    }}>
+                        {imgUrl &&
+                            <img alt={doc ? doc.name : "preview image"} src={imgUrl} style={{height: '100%'}}/>}
+                        {showObjs && bboxs}
+                    </Box>
                 </Box>
             </Box>
             <Box sx={{display: 'flex', width: '100%'}}>

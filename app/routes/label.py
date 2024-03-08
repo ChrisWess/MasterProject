@@ -33,6 +33,17 @@ def find_labels_by_ids():
         abort(400, err_msg)
 
 
+@application.route('/label/search', methods=['GET'])
+def search_labels():
+    args = request.args
+    if 'query' in args:
+        return LabelDAO().perform_label_search(args['query'])
+    else:
+        err_msg = "Please supply a search parameter with your request!"
+        application.logger.error(err_msg)
+        abort(400, err_msg)
+
+
 @application.route('/label/<label_id>', methods=['GET'])
 def find_label_by_id(label_id):
     try:

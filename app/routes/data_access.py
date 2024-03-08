@@ -251,7 +251,7 @@ def _import_json_dset(project_id, file, bulk_size):
     img_dao = ImgDocDAO()
     label_dao = LabelDAO()
     label_names, categories, label_map = [], [], {}
-    feat_anno_ids, feat_concept_ids, feat_bboxs, pbboxs = [], [], [], []
+    feat_obj_ids, feat_anno_ids, feat_concept_ids, feat_bboxs, pbboxs = [], [], [], [], []
     for line in file_stream:
         line = line.decode('utf-8')
         if line == ']':
@@ -316,7 +316,8 @@ def _import_json_dset(project_id, file, bulk_size):
         # Collect visual features data for final insert
         for idxs, fts, pbx in feats:
             i, j = idxs
-            anno = doc['objects'][i]['annotations'][j]
+            obj = doc['objects'][i]
+            anno = obj['annotations'][j]
             concepts = anno['conceptIds']
             cids, bboxs = [], []
             for feat in fts:
@@ -325,6 +326,7 @@ def _import_json_dset(project_id, file, bulk_size):
                     cids.append(feat_concept)
                     bboxs.append(feat['bboxs'])
             if cids:
+                feat_obj_ids.append(ObjectId(obj['_id']))
                 feat_anno_ids.append(ObjectId(anno['_id']))
                 feat_concept_ids.append(cids)
                 feat_bboxs.append(bboxs)
@@ -332,7 +334,7 @@ def _import_json_dset(project_id, file, bulk_size):
     if new_docs or batch:
         _finish_import(new_docs, bulk_size, batch, has_worked, project_id, user_id)
     if feat_anno_ids:
-        VisualFeatureDAO().add_many(feat_anno_ids, feat_concept_ids, feat_bboxs, pbboxs)
+        VisualFeatureDAO().add_many(feat_obj_ids, feat_anno_ids, feat_concept_ids, feat_bboxs, pbboxs)
     return len(new_docs), nums_annos
 
 

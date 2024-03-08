@@ -12,6 +12,7 @@ from app.db.models.vis_feature import BoundingBox
 
 
 class VisualFeaturePayload(UserCreationPayload):
+    object_id: Optional[PyObjectId] = Field(alias="objectId")
     annotation_id: Optional[PyObjectId] = Field(alias="annotationId")
     annotation: Optional[AnnotationPayload] = Field(default=None)
     concept_id: Optional[PyObjectId] = Field(default=None, alias="conceptId")
@@ -21,6 +22,7 @@ class VisualFeaturePayload(UserCreationPayload):
     class Config:
         _json_example = {
             "_id": ObjectId("65ac01674e1ed269cbe2f9e7"),
+            "objectId": ObjectId("6560bb8c49d58b986276c630"),
             "annotationId": ObjectId("6560badba00004fb3359631e"),
             "annotation": AnnotationPayload.Config._json_example,
             "conceptId": ObjectId("65610d601e91b2dff82f93ba"),

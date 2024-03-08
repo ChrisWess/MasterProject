@@ -17,6 +17,16 @@ def expand_all_features():
     return VisualFeatureDAO().unrolled(generate_response=True)
 
 
+@application.route('/visFeature/object/<obj_id>', methods=['GET'])
+def find_features_of_object(obj_id):
+    try:
+        return VisualFeatureDAO().find_by_object(ObjectId(obj_id), projection=request.args, generate_response=True)
+    except InvalidId:
+        err_msg = "The Detected Object ID you provided is not a valid ID!"
+        application.logger.error(err_msg)
+        abort(404, err_msg)
+
+
 @application.route('/visFeature/annotation/<anno_id>', methods=['GET'])
 def find_features_of_annotation(anno_id):
     try:
@@ -66,6 +76,7 @@ def validate_visual_feature(annotation_id, concept_id, bboxs):
         err_msg = str(e)
         application.logger.error(err_msg)
         abort(400, err_msg)
+    return obj['_id']
 
 
 @application.route('/visFeature', methods=['POST'])
@@ -101,10 +112,10 @@ def add_feature():
         abort(404, err_msg)
     try:
         concept_id = ObjectId(args["conceptId"])
-        validate_visual_feature(anno_id, concept_id, bboxs)
+        obj_id = validate_visual_feature(anno_id, concept_id, bboxs)
         ex_feature = VisualFeatureDAO().find_by_annotation_concept(anno_id, concept_id, projection='bboxs')
         if ex_feature is None:
-            response = VisualFeatureDAO().add(anno_id, concept_id, bboxs, generate_response=True)
+            response = VisualFeatureDAO().add(obj_id, anno_id, concept_id, bboxs, generate_response=True)
             application.logger.info(f"Added new feature {response['result']} to annotation {annotation_id} !")
         else:
             old_bboxs = ex_feature['bboxs']
