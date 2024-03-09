@@ -147,8 +147,10 @@ class WorkHistoryDAO(JoinableDAO):
         if entry is None:
             if proj_id is True:
                 proj_id = ImgDocDAO().find_by_id(doc_id, 'projectId', db_session=db_session)
-                if proj_id is not None:
+                if proj_id is not None and 'projectId' in proj_id:
                     proj_id = proj_id['projectId']
+                else:
+                    proj_id = None
             entry = WorkEntry(doc_id=doc_id, worker_id=worker_id, project_id=proj_id,
                               is_finished=bool(is_finished), createdAt=update_ts)
             return self.insert_doc(entry, generate_response=False, db_session=db_session)[1]['_id']

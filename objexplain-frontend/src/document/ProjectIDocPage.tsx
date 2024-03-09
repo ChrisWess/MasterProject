@@ -20,6 +20,7 @@ import {Button, Typography} from "@mui/material";
 import {DetectedObject} from "../api/models/object";
 import {ImageDocument} from "../api/models/imgdoc";
 import {Label} from "../api/models/label";
+import Tooltip from "@mui/material/Tooltip";
 
 
 export const BBOX_COLORS = [
@@ -254,8 +255,10 @@ const ProjectIDocPage: FC = () => {
                         height: '100%',
                         transform: `scale(${doc ? Math.min(1, (1170 / 716) / (doc.width / doc.height)) : 1})`
                     }}>
-                        {imgUrl &&
-                            <img alt={doc ? doc.name : "preview image"} src={imgUrl} style={{height: '100%'}}/>}
+                        {doc && imgUrl &&
+                            <Tooltip title={`Width: ${doc.width} ; Height: ${doc.height}`}>
+                                <img alt={doc.name} src={imgUrl} style={{height: '100%'}}/>
+                            </Tooltip>}
                         {showObjs && bboxs}
                     </Box>
                 </Box>

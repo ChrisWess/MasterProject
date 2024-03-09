@@ -10,9 +10,11 @@ import {Button} from "@mui/material";
 import {Label} from "../api/models/label";
 import ObjectControlPanel from "./ObjectControl";
 import {ImageDocument} from "../api/models/imgdoc";
-import {setObjectIdx} from "../reducers/objectSlice";
+import {setObject, setObjectIdx} from "../reducers/objectSlice";
 import {setDoc, setImgUrl, setLabelMap} from "../reducers/idocSlice";
 import {mapLabels} from "../document/DocControl";
+import Tooltip from "@mui/material/Tooltip";
+import {DetectedObject} from "../api/models/object";
 
 
 export const cropImage = (canvasRef: any, imgUrl: string, newX: number, newY: number,
@@ -51,6 +53,7 @@ const ObjectPage: FC = () => {
     // global state (redux)
     const project: ProjectStats | undefined = useSelector((state: any) => state.mainPage.currProject);
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
+    const detObj: DetectedObject | undefined = useSelector((state: any) => state.object.detObj);
     const imgUrl: string | undefined = useSelector((state: any) => state.iDoc.imgUrl);
     const labelsMap: [string, Label][] | undefined = useSelector((state: any) => state.iDoc.labelMap);
 
@@ -108,6 +111,7 @@ const ObjectPage: FC = () => {
                     dispatch(setObjectIdx(idx));
                     dispatch(setTitle(`Object ${idx + 1} of ${idoc.name}`));
                     let obj = idoc.objects[idx];
+                    dispatch(setObject(obj));
                     let newWidth = obj.brx - obj.tlx
                     let newHeight = obj.bry - obj.tly
                     cropImage(canvasRef, imgUrl, obj.tlx, obj.tly, newWidth, newHeight)
@@ -136,7 +140,9 @@ const ObjectPage: FC = () => {
                     left: '50%', transform: 'translateX(-50%)'
                 }}>
                     {imgUrl &&
-                        <canvas ref={canvasRef} style={{height: '100%'}}/>}
+                        <Tooltip title={`Bounding Box: ${[detObj?.tlx, detObj?.tly, detObj?.brx, detObj?.bry]}`}>
+                            <canvas ref={canvasRef} style={{height: '100%'}}/>
+                        </Tooltip>}
                 </Box>
             </Box>
             <Box sx={{display: 'flex', width: '100%'}}>

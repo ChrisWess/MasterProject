@@ -757,7 +757,7 @@ class BaseDAO(AbstractDAO):
         self._push_each.clear()
         self._update_commands.clear()
         self._query_matcher.clear()
-        new_ids = [doc['_id'] for doc in objs]
+        new_ids = [doc['_id'] for doc in self._helper_list]
         if self.stat_references:
             for ids, refs in zip((*locs_id, new_ids), self.stat_references):
                 if refs is not None:

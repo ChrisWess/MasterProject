@@ -49,7 +49,7 @@ class LabelDAO(BaseDAO):
         :param db_session:
         :return: Label object with the given name
         """
-        return self.simple_match("name", name, projection, generate_response, db_session, find_many=False)
+        return self.simple_match("lower", name.lower(), projection, generate_response, db_session, find_many=False)
 
     def find_dynamic(self, label, projection=None, generate_response=False, db_session=None):
         """
@@ -82,7 +82,7 @@ class LabelDAO(BaseDAO):
         :param query: substring that is used to search for labels
         :return: Label object with the given name
         """
-        self.add_query("name", '^' + query, '$regex')
+        self.add_query("lower", '^' + query.lower(), '$regex')
         self.regex_options(True)
 
     def perform_label_search(self, query):
@@ -95,7 +95,7 @@ class LabelDAO(BaseDAO):
         result = [(str(res['_id']), res['name']) for res in result]
         return {'status': 200, 'result': result, 'numResults': len(result)}
 
-    def find_or_add(self, label, categories, projection=None, generate_response=False, db_session=None):
+    def find_or_add(self, label, categories=None, projection=None, generate_response=False, db_session=None):
         """
         Find the Label with the given name
         :param label: name of the entity behind the label
@@ -105,21 +105,37 @@ class LabelDAO(BaseDAO):
         :param db_session:
         :return: Label object with the given name
         """
-        existing_label = self.find_by_name(label, projection=('_id', 'categories'), db_session=db_session)
+        init_proj = ('_id', 'categories')
+        existing_label = self.find_by_name(label, projection=init_proj, db_session=db_session)
         if existing_label is None:
-            return self.add(label, categories, generate_response, db_session=db_session)
+            result = self.add(label, categories, generate_response, db_session=db_session)
+            if not generate_response:
+                result = result[1]
+            return result
         else:
             lid = existing_label['_id']
             prev_categories = existing_label['categories']
-            result = self.find_by_id(lid, projection, False, db_session)
+            if projection == '_id' or projection == 'categories' or projection == init_proj:
+                result = existing_label
+            else:
+                result = self.find_by_id(lid, projection, False, db_session)
             if categories:
                 if type(categories) is list:
-                    for c in categories:
-                        if c not in prev_categories:
-                            self._category_set.add(self._process_category(c, db_session))
+                    category_tuples = tuple(categories)
                     categories.clear()
-                    for category in self._category_set:
-                        categories.append(category)
+                    for c in category_tuples:
+                        if c not in prev_categories:
+                            category = self._process_category(c, db_session)
+                            if type(category) is tuple:
+                                category, ctoks = category
+                            else:
+                                ctoks = None
+                            if category not in self._category_set:
+                                self._category_set.add(category)
+                                if ctoks:
+                                    categories.append((category, ctoks))
+                                else:
+                                    categories.append(category)
                 elif isinstance(categories, str):
                     if categories not in prev_categories:
                         self._helper_list.append(self._process_category(categories, db_session))
@@ -130,7 +146,6 @@ class LabelDAO(BaseDAO):
                     for category in categories:
                         try:
                             self._add_category(category, lid, db_session)
-                            application.logger.info(f'New category "{category}" has been added!')
                         except ValueError:
                             self._add_label_ref_to_category(category, lid, db_session)
                     self._helper_list.clear()
@@ -140,11 +155,24 @@ class LabelDAO(BaseDAO):
     def _process_category(self, category, db_session=None):
         category = self.preproc.preprocess_category(category)
         if isinstance(category, tuple):
-            category, tokens = category
+            tokens = category[1]
             corpus = CorpusDAO()
             for token in tokens:
                 corpus.find_doc_or_add(token, True, db_session=db_session)
         return category
+
+    def _process_unique_category(self, category, db_session=None):
+        category = self._process_category(category, db_session)
+        if type(category) is tuple:
+            category, ctoks = category
+        else:
+            ctoks = None
+        if category not in self._category_set:
+            self._category_set.add(category)
+            if ctoks:
+                self._helper_list.append((category, ctoks))
+            else:
+                self._helper_list.append(category)
 
     def _process_label_name(self, name, db_session=None):
         if self.preproc.toknizr.has_tokens(name):
@@ -186,29 +214,37 @@ class LabelDAO(BaseDAO):
     def add(self, name, categories, generate_response=False, db_session=None):
         # creates a new label in the labels collection
         tokens, txt_idxs = self._process_label_name(name, db_session)
+        category_info = None
         if categories is None:
             categories = self._helper_list
         elif type(categories) is list:
             for c in categories:
-                self._category_set.add(self._process_category(c, db_session))
+                self._process_unique_category(c, db_session)
+            category_info = self._helper_list
             categories.clear()
             for category in self._category_set:
                 categories.append(category)
         elif isinstance(categories, str):
-            self._helper_list.append(self._process_category(categories, db_session))
+            category_info = self._process_category(categories, db_session)
+            if type(category_info) is tuple:
+                self._helper_list.append(category_info[0])
+            else:
+                self._helper_list.append(category_info)
             categories = self._helper_list
+            category_info = (category_info,)
         else:
             raise ValueError('Categories are neither one string nor a list of such: ' + categories)
         label_idx = LabelIndexManager().get_incremented_index(db_session)
-        label = Label(label_idx=label_idx, name=name.capitalize(), name_tokens=tokens,
+        name = ' '.join(n.capitalize() for n in name.split(' '))
+        label = Label(label_idx=label_idx, name=name, name_tokens=tokens,
                       token_idxs=txt_idxs, categories=categories)
         response = self.insert_doc(label, generate_response=generate_response, db_session=db_session)
-        for category in categories:
-            try:
-                self._add_category(category, label_idx, db_session)
-                application.logger.info(f'New category "{category}" has been added!')
-            except ValueError:
-                self._add_label_ref_to_category(category, label_idx, db_session)
+        if category_info:
+            for category in category_info:
+                try:
+                    self._add_category(category, label_idx, db_session)
+                except ValueError:
+                    self._add_label_ref_to_category(category, label_idx, db_session)
         self._helper_list.clear()
         self._category_set.clear()
         return response
@@ -223,24 +259,23 @@ class LabelDAO(BaseDAO):
             tokens, txt_idxs = self._process_label_name(name, db_session)
             assert type(categors) is list
             for c in categors:
-                self._category_set.add(self._process_category(c, db_session))
+                self._process_unique_category(c, db_session)
             categors.clear()
             for category in self._category_set:
                 categors.append(category)
-            self._category_set.clear()
             label_idx = start_idx + i
-            self._helper_list.append(Label(label_idx=label_idx, name=name.capitalize(), name_tokens=tokens,
-                                           token_idxs=txt_idxs, categories=categors))
-        response = self.insert_docs(self._helper_list, generate_response=generate_response, db_session=db_session)
-        self._helper_list.clear()
-        for i, categors in enumerate(categories):
-            label_idx = start_idx + i
-            for category in categors:
+            for category in self._helper_list:
                 try:
                     self._add_category(category, label_idx, db_session)
-                    application.logger.info(f'New category "{category}" has been added!')
                 except ValueError:
                     self._add_label_ref_to_category(category, label_idx, db_session)
+            self._category_set.clear()
+            self._helper_list.clear()
+            name = ' '.join(n.capitalize() for n in name.split(' '))
+            self._or_list.append(Label(label_idx=label_idx, name=name, name_tokens=tokens,
+                                       token_idxs=txt_idxs, categories=categors))
+        response = self.insert_docs(self._or_list, generate_response=generate_response, db_session=db_session)
+        self._or_list.clear()
         return response
 
     def add_category_to_label(self, category, label, db_session=None):
@@ -259,7 +294,6 @@ class LabelDAO(BaseDAO):
         category = self._process_category(category, db_session)
         try:
             self._add_category(category, label_idx)
-            application.logger.info(f'New category "{category}" has been added!')
         except ValueError:
             self._add_label_ref_to_category(category, label_idx, db_session)
         return category
@@ -333,18 +367,23 @@ class LabelDAO(BaseDAO):
     def find_category(self, category, unroll_labels=False, generate_response=False, db_session=None):
         """
         Find the Category with the given name
-        :param category: the string of the category
+        :param category: the string of the category (also allows list of strings => $in query)
         :param unroll_labels:
         :param generate_response:
         :param db_session:
         :return: The category document, if it exists else None
         """
+        in_query = type(category) is list
         if unroll_labels:
+            if in_query:
+                self._in_query['$in'] = category
+                category = self._in_query
             self._query_matcher['_id'] = category
             self._match_agg_clause['$match'] = self._query_matcher
             self._lookup_pipeline.append(self._match_agg_clause)
             result = self.find_all_categories(True, False, db_session)
-            self._query_matcher.clear()
+            self._match_agg_clause.clear()
+            self._lookup_pipeline.clear()
             if result:
                 result = result[0]
                 labels = result['labels']
@@ -352,15 +391,23 @@ class LabelDAO(BaseDAO):
                     labels[i] = self.payload_model(**label).to_dict()
             else:
                 result = None
+        elif in_query:
+            self._in_query['$in'] = category
+            self._query_matcher['_id'] = self._in_query
+            result = self.categories.find(self._query_matcher, session=db_session)
         else:
             self._query_matcher['_id'] = category
             result = self.categories.find_one(self._query_matcher, session=db_session)
-            self._query_matcher.clear()
-        if generate_response and result:
+        self._query_matcher.clear()
+        if in_query:
+            self._in_query.clear()
+            if generate_response:
+                return {"result": list(result), "numResults": len(result), "status": 200,
+                        'model': 'Category', 'isComplete': True}
+        elif generate_response and result:
             return {"result": result, "numResults": 1, "status": 200,
                     'model': 'Category', 'isComplete': True}
-        else:
-            return result
+        return result
 
     def find_by_category(self, category, projection=None, generate_response=False, db_session=None):
         """
@@ -394,6 +441,8 @@ class LabelDAO(BaseDAO):
         return result
 
     def _add_label_ref_to_category(self, category, label_idx, db_session=None):
+        if type(category) is tuple:
+            category = category[0]
         self._query_matcher['_id'] = category
         self._push_op['labelIdxRefs'] = label_idx
         self._update_commands['$push'] = self._push_op
@@ -404,6 +453,11 @@ class LabelDAO(BaseDAO):
         return result
 
     def _add_category(self, category, label_idx=None, db_session=None):
+        if type(category) is tuple:
+            category, ctoks = category
+        else:
+            self._nor_list.append(category)
+            ctoks = self._nor_list
         self._query_matcher['_id'] = category
         try:
             self.categories.find(self._query_matcher, session=db_session).next()
@@ -411,17 +465,19 @@ class LabelDAO(BaseDAO):
             raise ValueError(f'A category with name "{category}" does already exist!')
         except StopIteration:
             self._query_matcher.clear()
-        self._query_matcher.clear()
         CorpusDAO().find_doc_or_add(category, True, db_session=db_session)
         if label_idx is None:
-            category = Category(id=category).to_dict()
-            self.categories.insert_one(category, session=db_session)
+            category_doc = Category(id=category, tokens=ctoks).to_dict()
         else:
-            category = Category(id=category, assigned_labels=[label_idx]).to_dict()
-            self.categories.insert_one(category, session=db_session)
-        return category
+            category_doc = Category(id=category, tokens=ctoks, assigned_labels=[label_idx]).to_dict()
+        self.categories.insert_one(category_doc, session=db_session)
+        if ctoks == self._nor_list:
+            self._nor_list.clear()
+        application.logger.info(f'New category "{category}" has been added!')
+        return category_doc
 
     def add_category(self, category, generate_response=False, db_session=None):
+        category = self._process_category(category, db_session)
         if generate_response:
             return {"result": self._add_category(category, db_session=db_session),
                     "numInserted": 1, "status": 201, 'model': 'Category'}

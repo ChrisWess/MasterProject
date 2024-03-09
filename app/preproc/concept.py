@@ -47,7 +47,7 @@ class DefaultConceptPreprocesser(ConceptPreprocesser):
                 elif curr_pos == NOUN or curr_pos == PROPN or curr_pos == PRON:
                     self.nouns.append(token)
             prev = token
-        if not (self.nouns and self.adjs):
+        if not self.adjs:
             return None
         adjs = tuple(self.adjs)
         self.adjs.clear()
@@ -60,6 +60,6 @@ class DefaultConceptPreprocesser(ConceptPreprocesser):
                 root = nouns[-1]
             return NounPhrase(start=start, end=end, root_noun=root, nouns=nouns, adjs=adjs)
         else:
-            noun = self.nouns[0]
+            noun = self.nouns[0] if self.nouns else MyToken('subject', NOUN, end)
             self.nouns.clear()
             return NounPhrase(start=start, end=end, root_noun=noun, adjs=adjs)

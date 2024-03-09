@@ -1,3 +1,5 @@
+from json import loads
+
 from bson import ObjectId
 from bson.errors import InvalidId
 from flask import request, abort
@@ -97,24 +99,33 @@ def delete_annotations_by_doc_id(doc_id):
 # @login_required
 def annotate():
     args = request.json
-    if "annotation" not in args or "objectId" not in args:
-        err_msg = 'Your request body must contain the key-value pairs with keys "annotation" and "objectId"!'
+    if 'annotation' not in args != 'annotations' not in args or "objectId" not in args:
+        err_msg = ('Your request body must contain the key-value pairs with keys '
+                   '"annotation" or "annotations" and "objectId"!')
         application.logger.error(err_msg)
         abort(400, err_msg)
     try:
         object_id = args["objectId"]
         obj_id = ObjectId(object_id)
-        obj = ImgDocDAO().find_by_object(obj_id, projection=('projectId', 'objects.labelId'))
+        obj = ImgDocDAO().find_by_object(obj_id, projection='projectId')
         if obj is None:
-            err_msg = "No object with the given ID could be found!"
+            err_msg = "No Detected Object with the given ID could be found!"
             application.logger.error(err_msg)
             abort(404, err_msg)
-        response = AnnotationDAO().add(obj_id, args["annotation"], obj['_id'],
-                                       obj['objects']['labelId'], obj['projectId'], generate_response=True)
-        application.logger.info(f"Added new annotation {response['result']} to object {object_id} !")
+        if 'annotation' in args:
+            response = AnnotationDAO().add(obj_id, args['annotation'], obj['_id'],
+                                           obj['projectId'], generate_response=True)
+            application.logger.info(f"Added new annotation {response['result']} to object {object_id} !")
+        else:
+            annotations = args['annotations']
+            if isinstance(annotations, str):
+                annotations = loads(annotations)
+            response = AnnotationDAO().add_many(obj_id, annotations, obj['_id'],
+                                                obj['projectId'], generate_response=True)
+            application.logger.info(f"Added {response['numResults']} new annotations to object {object_id} !")
         return response
     except InvalidId:
-        err_msg = "The object ID you provided is not a valid ID!"
+        err_msg = "The Detected Object ID you provided is not a valid ID!"
         application.logger.error(err_msg)
         abort(404, err_msg)
 

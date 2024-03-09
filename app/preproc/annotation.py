@@ -8,7 +8,7 @@ from spacy.tokens import Token
 
 from app.autoxplain.base.tokenize import tokenizer
 
-np_pos_labels = {ADJ, NOUN, PROPN, PRON, NUM, CCONJ, PUNCT}
+np_pos_labels = {ADJ, VERB, ADV, NOUN, PROPN, PRON, NUM, CCONJ, PUNCT}
 
 
 @dataclass
@@ -57,11 +57,11 @@ class AnnotationPreprocesser:
         return self.toknizr(annotation)
 
     @abstractmethod
-    def extract_noun_phrases(self, text, label_tokens):
+    def extract_noun_phrases(self, text):
         pass
 
     @abstractmethod
-    def extract_phrases_multi_line(self, lines, label_tokens):
+    def extract_phrases_multi_line(self, lines):
         pass
 
 
@@ -77,10 +77,9 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
         self.adjs = []
         self.nouns = []
 
-    def extract_noun_phrases(self, text, label_tokens):
+    def extract_noun_phrases(self, text):
         # https://towardsdatascience.com/enhancing-keybert-keyword-extraction-results-with-keyphrasevectorizers-3796fa93f4db
         # https://stackoverflow.com/questions/57049737/how-can-i-extract-all-phrases-from-a-sentence
-        label_tokset = set(label_tokens)
         self.curr_tokens.clear()
         tokenized = self.toknizr.analyze(text)
         skip = False
@@ -94,8 +93,7 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
             #  noun pairs from this like (black wings), (black beak) etc.
             #  "beak" should be able to refer to the concept "black beak", although it takes up only 1 token
             #  in the annotation text.
-            start_idx = end_idx = label_span = split_token = prev = None
-            filtered_nouph = []
+            start_idx = end_idx = split_token = prev = None
             for word in np:
                 if np.end == word.i + 1 and not self.adjs and not self.nouns:
                     skip = True
@@ -145,36 +143,28 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
                             self.nouns.append(word)
                         if found and start_idx is None:
                             start_idx = word.i
-                        filtered_nouph.append(word.text)
+                        self.noun_phrase_chunks.append(word)
                 prev = word
             if skip:
                 skip = False
                 continue
             if end_idx:
                 end_idx += 1
-            if self.nouns:
-                # TODO: if we find a label and it has additional adjectives assigned, then return
-                #  label idx and noun phrase with default noun ("subject")
-                # TODO: also check retrospectively, if any adjectives were left out (do not belong to noun phrases),
-                #  because in this work, they almost always refer to the object in question!
-                #  => Can spacy show to which noun an adjective refers to?
-                curr_token_set = {tok.lower() for tok in filtered_nouph}
-                # check if the noun did equal or partly equal the label
-                if label_tokset.issubset(curr_token_set):
-                    label_span = (self.nouns[0].i, self.nouns[-1].i + 1)
+            # TODO: also check retrospectively, if any adjectives were left out (do not belong to noun phrases),
+            #  because in this work, they almost always refer to the object in question!
+            #  => Can spacy show to which noun an adjective refers to?
+            self.noun_phrase_chunks.clear()
             filt_adjs = tuple(adj for adj in self.adjs if len(adj.text) > 1)
             if len(filt_adjs) == 0:
-                if label_span is not None:
-                    yield None, label_span
                 self.adjs.clear()
                 self.nouns.clear()
                 continue
-            self.noun_phrase_chunks.append(filtered_nouph)
+            # self.noun_phrase_chunks.append(filtered_nouph)
             if len(self.nouns) > 1:
                 np = NounPhrase(start=start_idx, end=end_idx, root_noun=root_noun,
                                 nouns=tuple(self.nouns), adjs=filt_adjs)
             elif len(self.nouns) == 1:
-                # TODO: noun phrase should contain something like "it has/is ..." or "which has/is ...", then the
+                # TODO: noun phrase might contain something like "it has/is ..." or "which has/is ...", then the
                 #  adjectives clearly refer to the subject and a noun might be omitted, however the latter case
                 #  might not be a noun phrase (maybe save these edge cases and try to analyze them separately/manually).
                 #  Cases like "it is blue" typically means that its body/fur/outer color is blue.
@@ -186,20 +176,16 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
             else:
                 np = NounPhrase(start=start_idx, end=end_idx,
                                 root_noun=MyToken('subject', NOUN, end_idx), adjs=filt_adjs)
-            if label_span:
-                yield np, label_span
-            else:
-                yield np
+            yield np
             self.adjs.clear()
             self.nouns.clear()
         for tok in tokenized:
             self.curr_tokens.append(tok.lower_)
 
-    def extract_phrases_multi_line(self, lines, label_tokens):
-        label_tokset = set(label_tokens)
+    def extract_phrases_multi_line(self, lines):
         self.curr_tokens.clear()
         tokenized = self.toknizr.analyze(lines)
-        filtered_nouph, line_idxs = [], deque()
+        line_idxs = deque()
         self.curr_tokens.append([])
         for tok in tokenized:
             t = tok.lower_
@@ -215,8 +201,7 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
             if len(np) == 1:
                 continue
             root_noun = np.root
-            start_idx = end_idx = label_span = split_token = prev = None
-            filtered_nouph.clear()
+            start_idx = end_idx = split_token = prev = None
             for word in np:
                 if np.end == word.i + 1 and not self.adjs and not self.nouns:
                     skip = True
@@ -269,22 +254,16 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
                             self.nouns.append(word)
                         if found and start_idx is None:
                             start_idx = word.i
-                        filtered_nouph.append(word.text)
+                        self.noun_phrase_chunks.append(word)
                 prev = word
             if skip:
                 skip = False
                 continue
             if end_idx:
                 end_idx += 1
-            if self.nouns:
-                curr_token_set = {tok.lower() for tok in filtered_nouph}
-                if label_tokset.issubset(curr_token_set):
-                    label_span = (self.nouns[0].i - line_start, self.nouns[-1].i - line_start + 1)
+            self.noun_phrase_chunks.clear()
             filt_adjs = tuple(adj for adj in self.adjs if len(adj.text) > 1)
             if len(filt_adjs) == 0:
-                if label_span is not None:
-                    yield None, line_ended, label_span
-                    line_ended = False
                 self.adjs.clear()
                 self.nouns.clear()
                 continue
@@ -299,10 +278,7 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
             else:
                 np = NounPhrase(start=start_idx - line_start, end=end_idx - line_start,
                                 root_noun=MyToken('subject', NOUN, end_idx), adjs=filt_adjs)
-            if label_span:
-                yield np, line_ended, label_span
-            else:
-                yield np, line_ended
+            yield np, line_ended
             line_ended = False
             self.adjs.clear()
             self.nouns.clear()

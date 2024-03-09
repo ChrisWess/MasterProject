@@ -78,8 +78,9 @@ const TestPage: FC = ({}) => {
                 bboxBrx: 200, bboxBry: 200,
                 label: 0,
                 annotations: [
-                    "This is a live, evil Starfish, because it is pink and has 5 long, sharp extremities!",
-                    "The evil starfish have pointy skin and many little suction pads on their back."
+                    "this is a bird with black feathers and a grey head.",
+                    "this bird is black with grey and has a long, pointy beak.",
+                    "a medium-sized bird with black feathers and a gray head."
                 ]
             },
         );

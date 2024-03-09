@@ -414,12 +414,10 @@ class ImgDocDAO(JoinableDAO):
             annos = obj["annotations"]
             if annos:
                 has_annos = True
-                label = obj["label"]
-                label_idx, label_tokens = label['labelIdx'], label['nameTokens']
                 for j, anno in enumerate(annos):
                     self._helper_list.append(anno.get('_id', None))
                     annos[j] = anno['text']
-                annos = AnnotationDAO().prepare_annotations(annos, label_idx, label_tokens, user_id, True, db_session)
+                annos = AnnotationDAO().prepare_annotations(annos, user_id, True, db_session)
                 for j, anno in enumerate(annos):
                     aid = self._helper_list[j]
                     if aid is not None:
@@ -445,15 +443,14 @@ class ImgDocDAO(JoinableDAO):
                                    generate_response=generate_response, db_session=db_session)
 
     # @transaction
-    def add_with_annos(self, name, fname, image, annotations, label, user_id, proj_id=None,
+    def add_with_annos(self, name, fname, image, annotations, label_id, user_id, proj_id=None,
                        as_bulk=False, generate_response=False, db_session=None):
         # creates a new document in the docs collection
         image, thumb, width, height = self.process_image_data(image)
         has_annos = bool(annotations)
         if has_annos:
-            annotations = AnnotationDAO().prepare_annotations(annotations, label['labelIdx'],
-                                                              label['nameTokens'], user_id, True)
-        objs = [DetectedObject(id=ObjectId(), label_id=label['_id'], tlx=0, tly=0, brx=width, bry=height,
+            annotations = AnnotationDAO().prepare_annotations(annotations, user_id, True)
+        objs = [DetectedObject(id=ObjectId(), label_id=label_id, tlx=0, tly=0, brx=width, bry=height,
                                annotations=annotations, created_by=user_id)]
         doc = ImgDoc(project_id=proj_id, name=name, fname=fname, width=width,
                      height=height, created_by=user_id, objects=objs)

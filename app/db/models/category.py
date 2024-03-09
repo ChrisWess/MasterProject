@@ -6,7 +6,9 @@ from pydantic import BaseModel, Field, StringConstraints
 class Category(BaseModel):
     id: Annotated[str, StringConstraints(min_length=2, max_length=30,
                                          to_lower=True, strip_whitespace=True)] = Field(alias="_id")
-    assigned_labels: list[int] = Field(alias="labelIdxRefs")
+    tokens: list[Annotated[str, StringConstraints(min_length=2, max_length=30,
+                                                  to_lower=True, strip_whitespace=True)]] = Field(default_factory=list)
+    assigned_labels: list[int] = Field(alias="labelIdxRefs", default_factory=list)
 
     class Config:
         validate_assignment = True

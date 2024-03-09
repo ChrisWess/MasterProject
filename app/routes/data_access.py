@@ -384,9 +384,7 @@ def _import_zipped_dset(project_id, file, bulk_size):
                     fnames[dir_name].append(fname)
         for dir_name, fnames in fnames.items():
             label_name = dir_name.replace(fname_delim, ' ')[4:]
-            label = label_dao.find_by_name(label_name, projection=('labelIdx', 'nameTokens'))
-            if label is None:
-                label = label_dao.add(label_name, label_categories)[1]
+            label = label_dao.find_or_add(label_name, label_categories, projection='_id')
             title = dir_name.replace(dir_delim[:7], ' ')
             for fname in fnames:
                 full_fname = fname
@@ -400,8 +398,8 @@ def _import_zipped_dset(project_id, file, bulk_size):
                 with myzip.open(aloc) as annof:
                     annos = [anno.decode('utf-8')[:-1] for anno in annof]
                     with myzip.open(iloc) as imgf:
-                        doc = img_dao.add_with_annos(title, full_img_fname, imgf.read(),
-                                                     annos, label, user_id, project_id, use_bulk)
+                        doc = img_dao.add_with_annos(title, full_img_fname, imgf.read(), annos,
+                                                     label['_id'], user_id, project_id, use_bulk)
                         nums_annos += len(annos)
                         _add_to_batch(doc, new_docs, bulk_size, batch, has_worked, project_id)
     if new_docs or batch:

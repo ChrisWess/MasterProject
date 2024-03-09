@@ -99,8 +99,7 @@ class ObjectDAO(JoinableDAO):
     def validate_object(obj, user_id=None, db_session=None):
         annos = obj.get("annotations", None)
         if 'label' in obj:
-            label = LabelDAO().find_dynamic(obj['label'], projection=(
-                '_id', 'labelIdx', 'nameTokens'), db_session=db_session)
+            label = LabelDAO().find_dynamic(obj['label'], projection='_id', db_session=db_session)
             if label is None:
                 err_msg = f'Object data refers to a label with info "{obj["label"]}" that could not be found!'
                 application.logger.error(err_msg)
@@ -109,13 +108,9 @@ class ObjectDAO(JoinableDAO):
             del obj['label']
             obj['labelId'] = label_id
         else:
-            label = None
-            label_id = obj['labelId'] = ObjectId(obj['labelId'])
+            obj['labelId'] = ObjectId(obj['labelId'])
         if annos:
-            if label is None:
-                label = LabelDAO().find_by_id(label_id, projection=('labelIdx', 'nameTokens'), db_session=db_session)
-            label_idx, label_tokens = label['labelIdx'], label['nameTokens']
-            AnnotationDAO().prepare_annotations(annos, label_idx, label_tokens, user_id, db_session=db_session)
+            AnnotationDAO().prepare_annotations(annos, user_id, db_session=db_session)
         if user_id:
             obj['createdBy'] = user_id
         for key, new_key in ObjectDAO.bbox_alias_mapping.items():
@@ -283,21 +278,17 @@ class ObjectDAO(JoinableDAO):
         else:
             if isinstance(label, ObjectId):
                 label_id = label
-                label = LabelDAO().find_by_id(label, projection=('labelIdx', 'nameTokens'), db_session=db_session)
             elif isinstance(label, dict):
                 label_id = ObjectId(label['_id'])
             else:
-                label = LabelDAO().find_dynamic(label, projection=('_id', 'labelIdx', 'nameTokens'),
-                                                db_session=db_session)
+                label = LabelDAO().find_dynamic(label, projection='_id', db_session=db_session)
                 label_id = label['_id']
-            label_idx, label_tokens = label['labelIdx'], label['nameTokens']
             if isinstance(annotations, str):
                 self._helper_list.append(
-                    AnnotationDAO().prepare_annotation(annotations, label_idx, label_tokens, user_id, db_session))
+                    AnnotationDAO().prepare_annotation(annotations, user_id, db_session))
                 annotations = self._helper_list
             else:
-                annotations = AnnotationDAO().prepare_annotations(annotations, label_idx, label_tokens,
-                                                                  user_id, db_session=db_session)
+                annotations = AnnotationDAO().prepare_annotations(annotations, user_id, db_session=db_session)
         obj = DetectedObject(id=ObjectId(), labelId=label_id, annotations=annotations, tlx=bbox[0],
                              tly=bbox[1], brx=bbox[2], bry=bbox[3], created_by=user_id)
         # pushes new object into image document

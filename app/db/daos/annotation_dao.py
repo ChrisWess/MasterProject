@@ -35,16 +35,10 @@ class AnnotationDAO(JoinableDAO):
 
         self.preproc = DefaultAnnotationPreprocesser()
 
-    def match_concepts(self, annotation, label_tokens, db_session):
+    def match_concepts(self, annotation, db_session):
         concept_ids = []
         concept_spans = []
-        label_occurs = []
-        for nouph in self.preproc.extract_noun_phrases(annotation, label_tokens):
-            if isinstance(nouph, tuple):
-                label_occurs.append(nouph[1])
-                nouph = nouph[0]
-                if nouph is None:
-                    continue
+        for nouph in self.preproc.extract_noun_phrases(annotation):
             concept_ids.append(nouph)
             concept_spans.append((nouph.start, nouph.end))
         if concept_ids:
@@ -53,10 +47,10 @@ class AnnotationDAO(JoinableDAO):
             else:
                 for i, concept in enumerate(ConceptDAO().find_concepts_or_add(concept_ids, db_session=db_session)):
                     concept_ids[i] = concept['_id']
-        return self.preproc.curr_tokens.copy(), concept_ids, concept_spans, label_occurs
+        return self.preproc.curr_tokens.copy(), concept_ids, concept_spans
 
     @staticmethod
-    def create_token_mask(anno_tokens, label_idx, label_occurs, spans):
+    def create_token_mask(anno_tokens, spans):
         """ Creates the mask that denotes the concept's positions in the list of tokens (of the annotation) """
         token_mask = [-1] * len(anno_tokens)
         # Add concept markers to the empty mask
@@ -64,18 +58,13 @@ class AnnotationDAO(JoinableDAO):
             for i, (start, end) in enumerate(spans):
                 # validate concept positions first
                 token_mask[start:end] = (i for _ in range(start, end))
-        # Add label markers to the mask
-        if label_occurs:
-            label_idx = - label_idx - 2
-            for start, end in label_occurs:
-                token_mask[start:end] = (label_idx for _ in range(start, end))
         return token_mask
 
-    def prepare_annotation(self, annotation, label_idx, label_tokens, user_id=None, db_session=None):
+    def prepare_annotation(self, annotation, user_id=None, db_session=None):
         if not user_id:
             user_id = UserDAO().get_current_user_id()
-        tokens, concept_ids, concept_spans, label_occurs = self.match_concepts(annotation, label_tokens, db_session)
-        mask = self.create_token_mask(tokens, label_idx, label_occurs, concept_spans)
+        tokens, concept_ids, concept_spans = self.match_concepts(annotation, db_session)
+        mask = self.create_token_mask(tokens, concept_spans)
         return Annotation(id=ObjectId(), text=annotation, tokens=tokens, concept_mask=mask,
                           concept_ids=concept_ids, created_by=user_id)
 
@@ -100,11 +89,10 @@ class AnnotationDAO(JoinableDAO):
             concept_ids.append(curr_concepts)
             concept_spans.append(curr_spans)
 
-    def match_concepts_multi_annos(self, annotations, label_tokens, db_session):
+    def match_concepts_multi_annos(self, annotations, db_session):
         # multi-line annotation preprocessing: inputting a single larger doc to spacy is more efficient.
         concept_ids = [[]]
         concept_spans = [[]]
-        label_occurs = [[]]
         joined_annos = annotations[0].strip()
         last_char = joined_annos[-1]
         if last_char == '.':
@@ -125,26 +113,9 @@ class AnnotationDAO(JoinableDAO):
                 curr_anno = curr_anno + '.'
                 annotations[i] = curr_anno
             joined_annos = joined_annos + '\n' + curr_anno
-        for nouph in self.preproc.extract_phrases_multi_line(joined_annos, label_tokens):
-            if len(nouph) == 3:
-                nouph, is_new_line, occur_idx = nouph
-                if is_new_line:
-                    label_occurs.append([occur_idx])
-                else:
-                    label_occurs[-1].append(occur_idx)
-                if nouph is None:
-                    if is_new_line:
-                        self._next_line(nouph, concept_ids, concept_spans)
-                    continue
-            else:
-                nouph, is_new_line = nouph
+        for nouph in self.preproc.extract_phrases_multi_line(joined_annos):
+            nouph, is_new_line = nouph
             if is_new_line:
-                curr_occurs = label_occurs[-1]
-                if curr_occurs or curr_occurs is None:
-                    label_occurs.append([])
-                else:
-                    label_occurs[-1] = None
-                    label_occurs.append(curr_occurs)
                 self._next_line(nouph, concept_ids, concept_spans)
             else:
                 self._helper_list.append(nouph)
@@ -173,11 +144,9 @@ class AnnotationDAO(JoinableDAO):
             for _ in range(len(annotations) - len(concept_ids)):
                 concept_ids.append(None)
                 concept_spans.append(None)
-                label_occurs.append(None)
-        return self.preproc.curr_tokens.copy(), concept_ids, concept_spans, label_occurs
+        return self.preproc.curr_tokens.copy(), concept_ids, concept_spans
 
-    def prepare_annotations(self, annotations, label_idx, label_tokens,
-                            user_id=None, skip_val_errors=False, db_session=None):
+    def prepare_annotations(self, annotations, user_id=None, skip_val_errors=False, db_session=None):
         # TODO: create the option to delay processing of annotations in favor of the responsiveness towards
         #  clients (the frontend) or put the annotation processing into a separate module that works
         #  through a queue of incoming raw annotations.
@@ -189,7 +158,7 @@ class AnnotationDAO(JoinableDAO):
             if len(annotations) == 1:
                 annotation = annotations[0]
                 try:
-                    annotations[0] = self.prepare_annotation(annotation, label_idx, label_tokens, user_id, db_session)
+                    annotations[0] = self.prepare_annotation(annotation, user_id, db_session)
                 except ValidationError as e:
                     if skip_val_errors:
                         application.logger.error(
@@ -199,13 +168,11 @@ class AnnotationDAO(JoinableDAO):
                         raise e
             else:
                 i = 0
-                tokens, concept_ids, concept_spans, label_occurs = self.match_concepts_multi_annos(
-                    annotations, label_tokens, db_session)
-                for anno, toks, cids, spans, occurs in zip(tuple(annotations), tokens, concept_ids, concept_spans,
-                                                           label_occurs):
+                tokens, concept_ids, concept_spans = self.match_concepts_multi_annos(annotations, db_session)
+                for anno, toks, cids, spans in zip(tuple(annotations), tokens, concept_ids, concept_spans):
                     if cids is None:
                         cids = self._helper_list
-                    mask = self.create_token_mask(toks, label_idx, occurs, spans)
+                    mask = self.create_token_mask(toks, spans)
                     try:
                         annotations[i] = Annotation(id=ObjectId(), text=anno, tokens=toks, concept_mask=mask,
                                                     concept_ids=cids, created_by=user_id)
@@ -267,28 +234,22 @@ class AnnotationDAO(JoinableDAO):
         return self.delete_nested_doc_by_match('createdBy', user_id, generate_response, db_session)
 
     # @transaction
-    def add(self, obj_id, annotation, doc_id, label_id, proj_id=None, generate_response=False, db_session=None):
+    def add(self, obj_id, annotation, doc_id, proj_id=None, generate_response=False, db_session=None):
         # TODO: automatically move old annotations of an image (append the image and object _id to these annotations)
         #  into an "archived" collection, if the image document reaches the limit of 16MB => however unlikely to be
         #  reached, since images are saved separately with gridfs
         user_id = UserDAO().get_current_user_id()
-        label = LabelDAO().find_by_id(label_id, projection=('labelIdx', 'nameTokens'), db_session=db_session)
-        label_idx, label_tokens = label['labelIdx'], label['nameTokens']
+        anno = self.prepare_annotation(annotation, user_id, db_session)
         from app.db.daos.work_history_dao import WorkHistoryDAO
         WorkHistoryDAO().update_or_add(doc_id, user_id, proj_id, db_session=db_session)
-        anno = self.prepare_annotation(annotation, label_idx, label_tokens, user_id, db_session=db_session)
         return self.insert_doc(anno, (doc_id, obj_id), generate_response=generate_response, db_session=db_session)
 
     # @transaction
-    def add_many(self, obj_id, annotations, doc_id, label_id, proj_id=None, generate_response=False, db_session=None):
+    def add_many(self, obj_id, annotations, doc_id, proj_id=None, generate_response=False, db_session=None):
         user_id = UserDAO().get_current_user_id()
-        label = LabelDAO().find_by_id(label_id, projection=('labelIdx', 'nameTokens'), db_session=db_session)
-        label_idx, label_tokens = label['labelIdx'], label['nameTokens']
+        annotations = self.prepare_annotations(annotations, user_id, db_session)
         from app.db.daos.work_history_dao import WorkHistoryDAO
         WorkHistoryDAO().update_or_add(doc_id, user_id, proj_id, db_session=db_session)
-        for i, annotation in enumerate(annotations):
-            annotations[i] = self.prepare_annotation(annotation, label_idx, label_tokens,
-                                                     user_id, db_session=db_session)
         return self.insert_docs(annotations, (doc_id, obj_id),
                                 generate_response=generate_response, db_session=db_session)
 
