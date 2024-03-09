@@ -263,19 +263,19 @@ class AnnotationDAO(JoinableDAO):
                                 generate_response=generate_response, db_session=db_session)
 
     # @transaction
-    def add_with_concepts(self, obj_id, annotation, label_id, concept_ids, concept_spans,
-                          generate_response=False, db_session=None):
+    def add_as_concepts(self, obj_id, concept_ids, concept_spans, generate_response=False, db_session=None):
         # creates a new explanation annotation for the given object
         if len(concept_ids) == len(concept_spans):
             raise ValueError('The number of concepts does not match the concept starting indices!')
         user_id = UserDAO().get_current_user_id()
-        label = LabelDAO().find_by_id(label_id, projection=('labelIdx', 'nameTokens'), db_session=db_session)
         concepts = ConceptDAO().find_many(concept_ids, projection=('_id', 'phraseWords'), db_session=db_session)
-        label_idx, label_tokens = label['labelIdx'], label['nameTokens']
-        tokens = self.preproc.tokenize(annotation)
-        # TODO: also make user input the label occurrences?
-        mask = self.create_token_mask(tokens, label_idx, label_tokens, concept_spans)
-        concept_ids = [con['_id'] for con in concepts]
+        tokens = []
+        for con in concepts:
+            tokens.extend(con['phraseWords'])
+            tokens.append('and')
+        del tokens[-1]
+        mask = self.create_token_mask(tokens, concept_spans)
+        annotation = ' '.join(tokens)
         anno = Annotation(obj_id=obj_id, text=annotation, tokens=tokens, concept_mask=mask,
                           concept_ids=concept_ids, created_by=user_id)
         return self.insert_doc(anno, obj_id, generate_response=generate_response, db_session=db_session)
@@ -285,6 +285,9 @@ class AnnotationDAO(JoinableDAO):
         # TODO: recreate tokens, mask and concepts
         self.add_query("_id", anno_id)
         self.add_update('text', new_text)
+
+    def remove_concept_from_annotation(self, anno_id, concept_idx, generate_response=False, db_session=None):
+        pass  # TODO: delete overridden concepts, if they are not referenced by any other annotation
 
     @staticmethod
     def _reconstruct_sentence_from_tokens(tokens, start, stop):
@@ -300,7 +303,7 @@ class AnnotationDAO(JoinableDAO):
 
     @staticmethod
     def _update_concept_mask(new_cid, concepts, mask, start, stop):
-        # TODO: delete overridden concepts, if they are not referenced by any other annotation
+        # TODO: use remove_concept_from_annotation()
         if concepts:
             last_overridden_idx = None
             curr_cidx = mask[start]  # concept idx at start

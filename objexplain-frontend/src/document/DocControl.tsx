@@ -121,7 +121,8 @@ const DocControlPanel: FC = () => {
                         </ListItemIcon>
                     </ListItem>)}
                 <ListItem divider key={'newObjItem'}>
-                    <ListItemButton key={'newObjButt'} sx={{py: 0}}>
+                    <ListItemButton key={'newObjButt'} sx={{py: 0}} onClick={() => project && idoc &&
+                        navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}/newObj`)}>
                         <ListItemIcon sx={{color: 'text.secondary', mr: 2}} key={'newObjIcon'}>
                             <AddIcon/>
                         </ListItemIcon>

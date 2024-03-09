@@ -1,6 +1,6 @@
 import Box from '@mui/material/Box';
 import {useNavigate, useOutletContext, useParams} from "react-router-dom";
-import {getRequest, loadImage} from "../api/requests";
+import {getRequest} from "../api/requests";
 import {FC, useEffect, useRef} from "react";
 import {useDispatch, useSelector} from "react-redux";
 import {ProjectStats} from "../api/models/project";
@@ -15,6 +15,7 @@ import {setDoc, setImgUrl, setLabelMap} from "../reducers/idocSlice";
 import {mapLabels} from "../document/DocControl";
 import Tooltip from "@mui/material/Tooltip";
 import {DetectedObject} from "../api/models/object";
+import {loadDocImage, loadProject} from "../document/ProjectIDocPage";
 
 
 export const cropImage = (canvasRef: any, imgUrl: string, newX: number, newY: number,
@@ -42,6 +43,10 @@ export const cropImage = (canvasRef: any, imgUrl: string, newX: number, newY: nu
     }
 }
 
+export const loadDoc = async (docId: string) => {
+    return await getRequest('idoc', docId)
+}
+
 const ObjectPage: FC = () => {
     const {projectName, docId, objIdx} = useParams();
     const context: any = useOutletContext();
@@ -61,36 +66,25 @@ const ObjectPage: FC = () => {
     // The Annotation View shows only the annotation of single user with all its details. An annotator
     // sees only his own annotation.
 
-    const loadProject = async () => {
-        if (projectName) {
-            return await getRequest('project/fromUser', encodeURIComponent(projectName!))
-        } else {
-            navigate('/notfound404')
-        }
-    }
-
-    const loadDoc = async () => {
-        if (docId) {
-            return await getRequest('idoc', docId)
-        }
-        navigate('/notfound404')
-    }
-
-    const loadDocImage = async (imgDoc: ImageDocument) => {
-        return await loadImage('idoc/img', imgDoc._id)
-    }
-
     useEffect(() => {
-        if (!project) {
-            loadProject().then(projectData => projectData && dispatch(setProject(projectData.result)))
+        if (!projectName) {
+            navigate('/notfound404')
+        } else if (!project || project.title != projectName) {
+            loadProject(projectName).then(projectData => projectData ?
+                dispatch(setProject(projectData.result)) :
+                navigate('/notfound404'))
         }
-        if (!idoc) {
-            loadDoc().then(idocData => {
+        if (!docId) {
+            navigate('/notfound404')
+        } else if (!idoc || idoc._id != docId) {
+            loadDoc(docId).then(idocData => {
                 if (idocData) {
                     dispatch(setDoc(idocData.result));
-                    loadDocImage(idocData.result).then(file => {
+                    loadDocImage(docId).then(file => {
                         file && dispatch(setImgUrl(file))
                     });
+                } else {
+                    navigate('/notfound404')
                 }
             })
         }

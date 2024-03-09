@@ -1,8 +1,9 @@
 import React from "react";
+import {BBOX_COLORS} from "../../document/ProjectIDocPage";
 
 interface BBoxProps {
-    objId: string;
-    color: string;
+    objIdx: number;
+    // TODO: opaqueness
     tlx: number;
     tly: number;
     brx: number;
@@ -10,17 +11,18 @@ interface BBoxProps {
     onContextMenu: (e: React.MouseEvent<SVGRectElement, MouseEvent>, bbox: number[]) => void;
 }
 
-function BoundingBox({objId, color, tlx, tly, brx, bry, onContextMenu}: BBoxProps) {
+function BoundingBox({objIdx, tlx, tly, brx, bry, onContextMenu}: BBoxProps) {
+    let bboxIdx = objIdx % 10;
+    console.log(BBOX_COLORS[bboxIdx])
 
     return (
         <rect
-            className={`bbox-${objId}`}
-            key={objId}
+            className={`bbox-${bboxIdx}`}
             x={tlx}
             y={tly}
             width={brx - tlx}
             height={bry - tly}
-            stroke={color}
+            stroke={BBOX_COLORS[bboxIdx]}
             strokeWidth={3}
             fill={"transparent"}
             onContextMenu={(e) => onContextMenu(e, [tlx, tly, brx, bry])}

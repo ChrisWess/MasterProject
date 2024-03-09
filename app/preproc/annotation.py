@@ -12,7 +12,8 @@ adj_candidates = {ADJ, VERB, ADV}
 noun_candidates = {NOUN, PROPN}
 conj_pos_labels = {CCONJ, PUNCT}
 np_pos_labels = set()
-np_pos_labels.update(adj_candidates, noun_candidates, conj_pos_labels)
+np_pos_labels.update(adj_candidates, noun_candidates, (CCONJ,))
+pos_fillers = {PART, DET, NUM, PUNCT}
 final_punct = {'.', '!', '?'}
 
 
@@ -119,9 +120,9 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
                 self.noun_phrase_chunks.append(word)
         return root_noun, word, start_idx, end_idx, split_token
 
-    def _process_phrase(self, np, root_noun, categories):
+    def _process_phrase(self, np, root_noun, categories, real_start):
         start_idx = end_idx = split_token = prev = None
-        for word in np:
+        for word in np[real_start:]:
             if np.end == word.i + 1 and not self.adjs:
                 self.adjs.clear()
                 self.nouns.clear()
@@ -156,7 +157,14 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
         for np in tokenized.noun_chunks:
             # Noun chunks are spacy spans
             root_noun = np.root
-            if len(np) == 1:
+            real_start = 0
+            for token in np:
+                if token.pos in pos_fillers:
+                    real_start += 1
+                else:
+                    break
+            np_size = len(np) - real_start
+            if np_size <= 1:
                 continue
             # TODO: also check retrospectively, if any adjectives were left out (do not belong to noun phrases),
             #  because in this work, they almost always refer to the object in question!
@@ -173,7 +181,7 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
             #  Try to enforce spell checking as much as possible in the frontend, but just use a suggest()
             #  function like shown in the link and select the top suggestion in the backend as a last resort,
             #  when encountering a spelling error.
-            proc_res = self._process_phrase(np, root_noun, categories)
+            proc_res = self._process_phrase(np, root_noun, categories, real_start)
             if proc_res is None:
                 continue
             root_noun, filt_adjs, start_idx, end_idx = proc_res
@@ -194,50 +202,54 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
         for tok in tokenized:
             self.curr_tokens.append(tok.lower_)
 
-    def _check_noun_context_multi_line(self, doc, root_noun, prev_np, end_idx, line_start, line_end):
-        # Check in front of the noun
-        idx = root_noun.i - 1
-        new_start = None
-        is_at_start = False
-        if end_idx is not None:
-            until_idx = end_idx
-        elif idx >= line_start:
-            until_idx = line_start
-            is_at_start = True
-        else:
-            until_idx = idx + 1
-        while idx >= until_idx:
-            word = doc[idx]
-            curr_pos = word.pos
-            if curr_pos in adj_candidates:
-                self.adjs.append(word)
-            elif curr_pos not in conj_pos_labels or word.text in final_punct:
-                break
-            idx -= 1
-        else:
-            if prev_np and not (self.adjs or is_at_start):
-                self.adjs.extend(prev_np.adjs)
-                new_start = root_noun.i
-        if self.adjs:
-            if new_start is None:
-                new_start = self.adjs[0].i
-            self.nouns.append(root_noun)
-            return new_start, root_noun.i + 1
-        # Check behind the noun
-        idx = root_noun.i + 1
-        if doc[idx].lower_ == 'is':
-            idx += 1
-            while idx < line_end:
+    def _check_noun_context_multi_line(self, doc, root_noun, prev_np, end_idx, line_start, line_end, no_skip_start):
+        # Make sure to not stray to far away from the relevant words (nouns)
+        if no_skip_start:
+            # Check in front of the noun
+            idx = root_noun.i - 1
+            new_start = None
+            is_at_start = False
+            if end_idx is not None:
+                until_idx = end_idx
+            elif idx >= line_start:
+                until_idx = line_start
+                is_at_start = True
+            else:
+                until_idx = idx + 1
+            while idx >= until_idx:
                 word = doc[idx]
                 curr_pos = word.pos
                 if curr_pos in adj_candidates:
                     self.adjs.append(word)
                 elif curr_pos not in conj_pos_labels or word.text in final_punct:
                     break
+                idx -= 1
+            else:
+                if prev_np and not (self.adjs or is_at_start):
+                    self.adjs.extend(prev_np.adjs)
+                    new_start = root_noun.i
+            if self.adjs:
+                if new_start is None:
+                    new_start = self.adjs[0].i
+                self.nouns.append(root_noun)
+                return new_start, root_noun.i + 1
+        # Check behind the noun
+        idx = root_noun.i + 1
+        tnext = doc[idx].lower_
+        if tnext == 'is':
+            idx += 1
+            while idx < line_end:
+                word = doc[idx]
+                curr_pos = word.pos
+                if curr_pos == ADJ or curr_pos == ADV:
+                    self.adjs.append(word)
+                else:
+                    break
                 idx += 1
             if self.adjs:
                 self.nouns.append(root_noun)
                 return root_noun.i, self.adjs[-1].i + 1
+        # elif type(root_noun) is not MyToken and tnext == 'has':
         return None
 
     def extract_phrases_multi_line(self, lines, categories):
@@ -252,7 +264,7 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
                 self.curr_tokens.append([])
             else:
                 self.curr_tokens[-1].append(t)
-        start_idx = end_idx = prev_np = None
+        end_idx = prev_np = None
         line_start = 0
         line_end = line_idxs.popleft() if line_idxs else None
         line_ended = False
@@ -273,11 +285,22 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
                 else:
                     line_start = line_end + 1
                     line_end = len(tokenized)
-            if len(np) == 1:
+            if end_idx and np.start <= end_idx:
+                continue
+            real_start = 0
+            for token in np:
+                if token.pos in pos_fillers:
+                    real_start += 1
+                else:
+                    break
+            np_size = len(np) - real_start
+            if not np_size:
+                continue
+            if np_size == 1:
                 if root_noun.lower_ in categories or root_noun.pos == PRON:
                     root_noun = MyToken('subject', NOUN, root_noun.i)
-                context = self._check_noun_context_multi_line(tokenized, root_noun, prev_np,
-                                                              end_idx, line_start, line_end)
+                context = self._check_noun_context_multi_line(tokenized, root_noun, prev_np, end_idx,
+                                                              line_start, line_end, real_start == 0)
                 if context is None:
                     continue
                 filt_adjs = tuple(adj for adj in self.adjs if len(adj.text) > 1)
@@ -287,7 +310,7 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
                     continue
                 start_idx, end_idx = context
             else:
-                proc_res = self._process_phrase(np, root_noun, categories)
+                proc_res = self._process_phrase(np, root_noun, categories, real_start)
                 if proc_res is None:
                     continue
                 root_noun, filt_adjs, start_idx, end_idx = proc_res

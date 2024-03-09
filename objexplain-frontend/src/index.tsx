@@ -10,6 +10,7 @@ import appBarReducer from "./reducers/appBarSlice"
 import mainPageReducer from "./reducers/mainPageSlice"
 import docReducer from "./reducers/idocSlice"
 import objectPageReducer from "./reducers/objectSlice"
+import newObjectPageReducer from "./reducers/objectCreateSlice"
 
 
 const store = configureStore({
@@ -19,6 +20,7 @@ const store = configureStore({
         mainPage: mainPageReducer,
         iDoc: docReducer,
         object: objectPageReducer,
+        newObj: newObjectPageReducer,
     }
 })
 

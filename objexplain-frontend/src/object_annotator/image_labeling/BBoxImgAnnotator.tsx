@@ -1,96 +1,49 @@
-import {Button, ButtonGroup, Toolbar, Typography} from "@mui/material";
 import * as d3 from "d3";
-import {useCallback, useEffect, useMemo, useRef, useState} from "react";
-import AdocHooks from "../../../api/AdocHooks";
-import BboxAnnotationHooks from "../../../api/BboxAnnotationHooks";
-import {
-    AnnotationDocumentRead,
-    BBoxAnnotationReadResolvedCode,
-    SourceDocumentWithDataRead,
-    SpanAnnotationReadResolved,
-} from "../../../api/openapi";
-import SnackbarAPI from "../../../features/Snackbar/SnackbarAPI";
-import {useAppSelector} from "../../../plugins/ReduxHooks";
-import SpanContextMenu, {CodeSelectorHandle} from "../SpanContextMenu/SpanContextMenu";
-import {ICode} from "../TextAnnotator/ICode";
-import SVGBBox from "./SVGBBox";
-import SVGBBoxText from "./SVGBBoxText";
-import SdocHooks from "../../../api/SdocHooks";
+import {FC, useCallback, useEffect, useMemo, useRef, useState} from "react";
+import {useDispatch, useSelector} from "react-redux";
+import BoundingBox from "./BBox";
+import BBoxText from "./BBoxText";
+import {DetectedObject} from "../../api/models/object";
+import {getMappedLabel} from "../ObjectControl";
+import {setZoomResetter} from "../../reducers/objectCreateSlice";
+import {ImageDocument} from "../../api/models/imgdoc";
 
 interface ImageAnnotatorProps {
-    sdoc: SourceDocumentWithDataRead;
-    adoc: AnnotationDocumentRead | null;
+    idoc: ImageDocument;
+    height: number;
 }
 
-function ImageAnnotator(props: ImageAnnotatorProps) {
-    const heightMetadata = SdocHooks.useGetMetadataByKey(props.sdoc.id, "height");
-
-    if (heightMetadata.isSuccess) {
-        return <ImageAnnotatorWithHeight sdoc={props.sdoc} adoc={props.adoc} height={heightMetadata.data.int_value!}/>;
-    } else if (heightMetadata.isError) {
-        return <div>{heightMetadata.error.message}</div>;
-    } else if (heightMetadata.isLoading) {
-        return <div>Loading...</div>;
-    } else {
-        return <>Something went wrong!</>;
-    }
-}
-
-function ImageAnnotatorWithHeight({sdoc, adoc, height}: ImageAnnotatorProps & { height: number }) {
-    // references to svg elements
+const ImageAnnotator: FC<ImageAnnotatorProps> = ({idoc, height}) => {
     const svgRef = useRef<SVGSVGElement>(null);
     const gZoomRef = useRef<SVGGElement>(null);
     const gDragRef = useRef<SVGGElement>(null);
     const rectRef = useRef<SVGRectElement>(null);
     const imgRef = useRef<SVGImageElement>(null);
-    const codeSelectorRef = useRef<CodeSelectorHandle>(null);
 
-    // global client state (redux)
-    const visibleAdocIds = useAppSelector((state) => state.annotations.visibleAdocIds);
-    const hiddenCodeIds = useAppSelector((state) => state.annotations.hiddenCodeIds);
+    // global state (redux)
+    const dispatch = useDispatch();
+    const labelsMap = useSelector((state: any) => state.iDoc.labelMap);
+    const imgUrl: string | undefined = useSelector((state: any) => state.iDoc.imgUrl);
+    const isZooming: boolean = useSelector((state: any) => state.newObj.isZooming);
 
-    // global server state (react query)
-    const annotationsBatch = AdocHooks.useGetAllBboxAnnotationsBatch(visibleAdocIds);
+    const [selectedBbox, setSelectedBbox] = useState<DetectedObject | null>(null);
 
-    // computed
-    const annotations = useMemo(() => {
-        const annotationsIsUndefined = annotationsBatch.some((a) => !a.data);
-        if (annotationsIsUndefined) return undefined;
-        return annotationsBatch.map((a) => a.data!).flat();
-    }, [annotationsBatch]);
-
-    const data = useMemo(() => {
-        return (annotations || []).filter((bbox) => !hiddenCodeIds.includes(bbox.code.id));
-    }, [annotations, hiddenCodeIds]);
-
-    // local client state
-    const [isZooming, setIsZooming] = useState(true);
-    const [selectedBbox, setSelectedBbox] = useState<BBoxAnnotationReadResolvedCode | null>(null);
-
-    // mutations for create, update, delete
-    const createMutation = BboxAnnotationHooks.useCreateAnnotation();
-    const updateMutation = BboxAnnotationHooks.useUpdateBBox();
-    const deleteMutation = BboxAnnotationHooks.useDelete();
-
-    // right click (contextmenu) handling
-    const handleRightClick = useCallback(
-        (event: any, d: BBoxAnnotationReadResolvedCode) => {
+    const handleRightClick = useCallback((event: any, obj: DetectedObject) => {
             event.preventDefault();
             const rect = event.target.getBoundingClientRect();
             const position = {
                 left: rect.left,
                 top: rect.top + rect.height,
             };
-            codeSelectorRef.current!.open(position, [d]);
-            setSelectedBbox(d);
-        },
-        [codeSelectorRef],
+            // TODO: take position
+            setSelectedBbox(obj);
+        }, [],
     );
 
     // drag handling
     const drag = useMemo(() => d3.drag<SVGGElement, unknown>(), []);
 
-    const handleDragStart = (event: d3.D3DragEvent<any, any, any>, d: any) => {
+    const handleDragStart = (event: d3.D3DragEvent<any, any, any>, _: any) => {
         if (!rectRef.current) return;
 
         const myRect = d3.select(rectRef.current);
@@ -103,7 +56,7 @@ function ImageAnnotatorWithHeight({sdoc, adoc, height}: ImageAnnotatorProps & { 
             .attr("height", 0);
     };
 
-    const handleDrag = (event: d3.D3DragEvent<any, any, any>, d: any) => {
+    const handleDrag = (event: d3.D3DragEvent<any, any, any>, _: any) => {
         if (!rectRef.current) return;
 
         const myRect = d3.select(rectRef.current);
@@ -115,27 +68,23 @@ function ImageAnnotatorWithHeight({sdoc, adoc, height}: ImageAnnotatorProps & { 
         const h = Math.abs(event.y - y);
 
         if (event.x < x && event.y < y) {
-            const maxWidth = x;
-            const maxHeight = y;
             myRect
                 .attr("y", Math.max(0, y - h))
                 .attr("x", Math.max(0, x - w))
-                .attr("width", Math.min(w, maxWidth))
-                .attr("height", Math.min(h, maxHeight));
+                .attr("width", Math.min(w, x))
+                .attr("height", Math.min(h, y));
         } else if (event.x < x) {
-            const maxWidth = x;
             const maxHeight = myImage.height - y;
             myRect
                 .attr("x", Math.max(0, x - w))
-                .attr("width", Math.min(w, maxWidth))
+                .attr("width", Math.min(w, x))
                 .attr("height", Math.min(h, maxHeight));
         } else if (event.y < y) {
             const maxWidth = myImage.width - x;
-            const maxHeight = y;
             myRect
                 .attr("width", Math.min(w, maxWidth))
                 .attr("y", Math.max(0, y - h))
-                .attr("height", Math.min(h, maxHeight));
+                .attr("height", Math.min(h, y));
         } else {
             const maxWidth = myImage.width - x;
             const maxHeight = myImage.height - y;
@@ -143,7 +92,7 @@ function ImageAnnotatorWithHeight({sdoc, adoc, height}: ImageAnnotatorProps & { 
         }
     };
 
-    const handleDragEnd = (event: d3.D3DragEvent<any, any, any>, d: any) => {
+    const handleDragEnd = (_event: d3.D3DragEvent<any, any, any>, _: any) => {
         const myRect = d3.select(rectRef.current);
         const width = parseInt(myRect.attr("width"));
         const height = parseInt(myRect.attr("height"));
@@ -155,7 +104,11 @@ function ImageAnnotatorWithHeight({sdoc, adoc, height}: ImageAnnotatorProps & { 
                 left: boundingBox.left,
                 top: boundingBox.top + boundingBox.height,
             };
-            codeSelectorRef.current!.open(position);
+            // TODO: get bounding box position and dimensions and save in state.
+            //   On Button Click in NewObjectControl Panel (after label & categories are defined),
+            //   fire an object insert into IDoc with collected data. Make Bounding Box half transparent
+            //   after the operation (like the other BBoxs), which is fixed in and read from idoc now.
+            //   When dragging, we draw the next BBox.
         } else {
             resetRect();
         }
@@ -166,28 +119,19 @@ function ImageAnnotatorWithHeight({sdoc, adoc, height}: ImageAnnotatorProps & { 
         myRect.attr("width", 0).attr("height", 0);
     };
 
-    // zoom handling
-    const zoom = useMemo(() => d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.5, 5]), []);
+    // main zoom element
+    const zoom = useMemo(() =>
+        d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.5, 5]), []);
 
     const handleZoom = useCallback((e: d3.D3ZoomEvent<any, any>) => {
         d3.select(gZoomRef.current).attr("transform", e.transform.toString());
     }, []);
 
-    // init component, so that zoom is default
-    useEffect(() => {
-        if (svgRef.current) {
-            const svg = d3.select<SVGSVGElement, unknown>(svgRef.current!);
-            zoom.on("zoom", handleZoom);
-            svg.call(zoom);
-        }
-    }, [zoom, svgRef, handleZoom]);
-
-    // button handlers
-    const toggleZoom = () => {
+    const setupZoom = () => {
         const svg = d3.select<SVGSVGElement, unknown>(svgRef.current!);
         const gDrag = d3.select<SVGGElement, unknown>(gDragRef.current!);
 
-        if (isZooming) {
+        if (!isZooming) {
             svg.on(".zoom", null);
 
             drag.on("start", handleDragStart);
@@ -200,168 +144,64 @@ function ImageAnnotatorWithHeight({sdoc, adoc, height}: ImageAnnotatorProps & { 
             zoom.on("zoom", handleZoom);
             svg.call(zoom);
         }
-        setIsZooming(!isZooming);
     };
 
-    const resetZoom = () => {
+    useEffect(() => {
+        if (svgRef.current) {
+            setupZoom();
+        }
+    }, [zoom, svgRef, handleZoom, isZooming]);
+
+    const resetZoom = useCallback(() => {
         const svg = d3.select<SVGSVGElement, unknown>(svgRef.current!);
         svg.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
-    };
+    }, [zoom, svgRef])
 
-    // code selector events
-    const onCodeSelectorAddCode = (code: ICode) => {
-        if (adoc) {
-            const myRect = d3.select(rectRef.current);
-            const x = parseInt(myRect.attr("x"));
-            const y = parseInt(myRect.attr("y"));
-            const width = parseInt(myRect.attr("width"));
-            const height = parseInt(myRect.attr("height"));
-            createMutation.mutate(
-                {
-                    requestBody: {
-                        code_id: code.id,
-                        annotation_document_id: adoc.id,
-                        x_min: x,
-                        x_max: x + width,
-                        y_min: y,
-                        y_max: y + height,
-                    },
-                },
-                {
-                    onSuccess: (bboxAnnotation) => {
-                        SnackbarAPI.openSnackbar({
-                            text: `Created Bounding Box Annotation ${bboxAnnotation.id}`,
-                            severity: "success",
-                        });
-                    },
-                },
-            );
-            // console.log("Add", code);
-            // console.log(`drag end: {x: ${x}, y: ${y}, width: ${width}, height: ${height}}`);
-        } else {
-            console.error("This should never happen! (onCodeSelectorAddCode)");
-        }
-    };
-
-    const onCodeSelectorEditCode = (
-        annotationToEdit: SpanAnnotationReadResolved | BBoxAnnotationReadResolvedCode,
-        code: ICode,
-    ) => {
-        if (selectedBbox) {
-            updateMutation.mutate(
-                {
-                    bboxToUpdate: selectedBbox,
-                    resolve: true,
-                    requestBody: {
-                        code_id: code.id,
-                    },
-                },
-                {
-                    onSuccess: (updatedBboxAnnotation) => {
-                        SnackbarAPI.openSnackbar({
-                            text: `Updated Bounding Box Annotation ${updatedBboxAnnotation.id}`,
-                            severity: "success",
-                        });
-                    },
-                },
-            );
-            // console.log("Edit", code);
-        } else {
-            console.error("This should never happen! (onCodeSelectorEditCode)");
-        }
-    };
-
-    const onCodeSelectorDeleteCode = () => {
-        if (selectedBbox) {
-            deleteMutation.mutate(
-                {bboxToDelete: selectedBbox},
-                {
-                    onSuccess: (data) => {
-                        SnackbarAPI.openSnackbar({
-                            text: `Deleted Bounding Box Annotation ${data.id}`,
-                            severity: "success",
-                        });
-                    },
-                },
-            );
-            // console.log("Delete", code);
-        } else {
-            console.error("This should never happen! (onCodeSelectorDeleteCode)");
-        }
-    };
-
-    const onCodeSelectorClose = () => {
-        resetRect(); // reset selection
-        setSelectedBbox(null); // reset selected bounding box
-    };
+    useEffect(() => {
+        dispatch(setZoomResetter(resetZoom));
+    }, []);
 
     return (
-        <>
-            <Toolbar variant="dense" disableGutters>
-                <ButtonGroup>
-                    <Button onClick={() => toggleZoom()} variant={isZooming ? "contained" : "outlined"}>
-                        Zoom
-                    </Button>
-                    <Button onClick={() => toggleZoom()} variant={!isZooming ? "contained" : "outlined"}>
-                        Annotate
-                    </Button>
-                </ButtonGroup>
-                <Button onClick={() => resetZoom()} variant="outlined" sx={{ml: 2, flexShrink: 0}}>
-                    Reset Zoom
-                </Button>
-                <Typography variant="body1" component="div" sx={{ml: 2}}>
-                    Hint:{" "}
-                    {isZooming
-                        ? "Try to drag the image & use mouse wheel to zoom. Right click boxes to edit annotations."
-                        : "Drag to create annotations. Right click boxes to edit annotations."}
-                </Typography>
-            </Toolbar>
-
-            <SpanContextMenu
-                ref={codeSelectorRef}
-                onAdd={onCodeSelectorAddCode}
-                onEdit={onCodeSelectorEditCode}
-                onDelete={onCodeSelectorDeleteCode}
-                onClose={onCodeSelectorClose}
-            />
-            <svg
-                ref={svgRef}
-                width="100%"
-                height={Math.max(500, height) + "px"}
-                style={{cursor: isZooming ? "move" : "auto"}}
-            >
-                <g ref={gZoomRef}>
-                    <g ref={gDragRef} style={{cursor: isZooming ? "move" : "crosshair"}}>
-                        <image ref={imgRef} href={sdoc.content} style={{outline: "1px solid black"}}/>
-                        <rect
-                            ref={rectRef}
-                            x={0}
-                            y={0}
-                            stroke={"black"}
-                            strokeWidth={3}
-                            fill={"transparent"}
-                            width={0}
-                            height={0}
-                        ></rect>
-                    </g>
-                    <g>
-                        {data.map((bbox) => (
-                            <SVGBBox key={bbox.id} bbox={bbox} onContextMenu={handleRightClick}/>
-                        ))}
-                    </g>
-                    <g>
-                        {data.map((bbox) => (
-                            <SVGBBoxText
-                                key={bbox.id}
-                                bbox={bbox}
-                                onContextMenu={handleRightClick}
-                                fontSize={Math.max(21, height / 17)}
-                            />
-                        ))}
-                    </g>
+        <svg
+            ref={svgRef}
+            width="100%"
+            height={Math.max(500, height) + "px"}
+            style={{cursor: isZooming ? "move" : "auto"}}
+        >
+            <g ref={gZoomRef}>
+                <g ref={gDragRef} style={{cursor: isZooming ? "move" : "crosshair"}}>
+                    <image ref={imgRef} href={imgUrl} style={{outline: "1px solid black"}}/>
+                    <rect
+                        ref={rectRef}
+                        x={0}
+                        y={0}
+                        stroke={"black"}
+                        strokeWidth={3}
+                        fill={"transparent"}
+                        width={0}
+                        height={0}
+                    ></rect>
                 </g>
-            </svg>
-        </>
+                <g>
+                    {idoc.objects?.map((obj: DetectedObject, index: number) => (
+                        <BoundingBox key={'bboxRect' + index} objIdx={index}
+                                     tlx={obj.tlx} tly={obj.tly} brx={obj.brx} bry={obj.bry}
+                                     onContextMenu={(e) => handleRightClick(e, obj)}/>
+                    ))}
+                </g>
+                <g>
+                    {idoc.objects?.map((obj: DetectedObject, index: number) => (
+                        <BBoxText
+                            key={'bboxText' + index}
+                            text={getMappedLabel(labelsMap, obj.labelId)!.name}
+                            tlx={obj.tlx} tly={obj.tly} brx={obj.brx} bry={obj.bry}
+                            onContextMenu={(e) => handleRightClick(e, obj)}
+                            fontSize={Math.max(21, height / 17)}
+                        />
+                    ))}
+                </g>
+            </g>
+        </svg>
     );
 }
 

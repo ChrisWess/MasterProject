@@ -225,7 +225,7 @@ const UserDashboard: FC = () => {
                         </Grid>
                         <Grid item xs={12} md={12} lg={12}>
                             <Dialog open={openCreate} onClose={handleDialogClose}>
-                                <DialogTitle>new Project</DialogTitle>
+                                <DialogTitle>New Project</DialogTitle>
                                 <DialogContent>
                                     <DialogContentText>
                                         Please type in the name of the new project!

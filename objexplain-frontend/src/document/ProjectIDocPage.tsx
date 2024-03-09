@@ -48,8 +48,16 @@ export const getLabel = (labelsMap: [string, Label][] | undefined, obj: Detected
     return label
 }
 
+export const loadProject = async (projectName: string) => {
+    return await getRequest('project/fromUser', encodeURIComponent(projectName!))
+}
+
+export const loadDocImage = async (docId: string) => {
+    return await loadImage('idoc/img', docId)
+}
+
 const ProjectIDocPage: FC = () => {
-    const {projectName, docId} = useParams();
+    const {projectName} = useParams();
     const context: any = useOutletContext();
     const idoc: any = useLoaderData();
     const imgContainer = useRef<HTMLDivElement>(null);
@@ -195,37 +203,29 @@ const ProjectIDocPage: FC = () => {
 
     const bboxs = useMemo(generateObjectBBoxs, [doc, labelsMap, objsVis])
 
-    const loadProject = async () => {
-        if (projectName) {
-            return await getRequest('project/fromUser', encodeURIComponent(projectName!))
-        } else {
-            navigate('/notfound404')
-        }
-    }
-
-    const loadDocImage = async (imgDoc: ImageDocument) => {
-        if (imgDoc) {
-            return await loadImage('idoc/img', imgDoc._id)
-        } else {
-            navigate('/notfound404')
-        }
-    }
-
     useEffect(() => {
-        if (!project) {
-            loadProject().then(projectData => projectData && dispatch(setProject(projectData.result)))
+        if (!projectName) {
+            navigate('/notfound404')
+        } else {
+            if (!project || project.title != projectName) {
+                loadProject(projectName).then(projectData => projectData ?
+                    dispatch(setProject(projectData.result)) :
+                    navigate('/notfound404'))
+            }
         }
     }, [projectName]);
 
     useEffect(() => {
         if (doc && project) {
-            loadDocImage(doc).then(file => {
+            loadDocImage(doc._id).then(file => {
                 if (file) {
                     dispatch(setTitle(doc.name));
                     dispatch(initVisibleObjs(doc.objects ? doc.objects.length : 0));
                     dispatch(setImgUrl(file));
                     window.history.replaceState(null, '',
                         `/project/${encodeURIComponent(project.title)}/idoc/${doc._id}`)
+                } else {
+                    navigate('/notfound404')
                 }
             });
         }
@@ -235,6 +235,8 @@ const ProjectIDocPage: FC = () => {
         context.setControlPanel(<DocControlPanel/>);
         if (idoc) {
             dispatch(setDoc(idoc))
+        } else {
+            navigate('/notfound404')
         }
     }, []);
 

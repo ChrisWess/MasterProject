@@ -1,6 +1,6 @@
-import {ChangeEvent, FC, useEffect, useMemo, useState} from "react";
+import {ChangeEvent, FC, useState} from "react";
 import Box from "@mui/material/Box";
-import {Autocomplete, Button, Chip, Divider, IconButton, List, ListItem, TextField} from "@mui/material";
+import {Autocomplete, Button, ButtonGroup, Divider, IconButton, TextField} from "@mui/material";
 import ArrowLeftIcon from '@mui/icons-material/ArrowLeft';
 import ArrowDropUpIcon from '@mui/icons-material/ArrowDropUp';
 import {useDispatch, useSelector} from "react-redux";
@@ -9,26 +9,14 @@ import Typography from "@mui/material/Typography";
 import AlertMessage from "../components/AlertMessage";
 import {useNavigate} from "react-router-dom";
 import {ImageDocument} from "../api/models/imgdoc";
-import {Label} from "../api/models/label";
 import {getRequest, postRequest, putRequest} from "../api/requests";
 import {resetLabelMap} from "../reducers/idocSlice";
-import ListItemText from "@mui/material/ListItemText";
+import {switchZooming} from "../reducers/objectCreateSlice";
 
 
-export const getMappedLabel = (labelsMap: [string, Label][], labelId: string) => {
-    for (let i = 0; i < labelsMap.length; i++) {
-        if (labelsMap[i][0] === labelId) {
-            return labelsMap[i][1]
-        }
-    }
-    return undefined
-}
-
-
-const ObjectControlPanel: FC = () => {
+const NewObjectControlPanel: FC = () => {
     const [alertContent, setAlertContent] = useState<string>();
     const [alertSeverity, setAlertSeverity] = useState<string>();
-    const [objectLabel, setObjectLabel] = useState<Label>();
     const [labelUpdValue, setLabelUpdValue] = useState<string>('');
     const [queriedLabels, setQueriedLabels] = useState<any[]>([]);
 
@@ -37,8 +25,9 @@ const ObjectControlPanel: FC = () => {
     // global state (redux)
     const project: ProjectStats | undefined = useSelector((state: any) => state.mainPage.currProject);
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
-    const labelsMap: [string, Label][] | undefined = useSelector((state: any) => state.iDoc.labelMap);
     const objIdx: number | undefined = useSelector((state: any) => state.object.objIdx);
+    const isZooming: boolean = useSelector((state: any) => state.newObj.isZooming);
+    const resetZoom: Function | undefined = useSelector((state: any) => state.newObj.zoomResetter);
 
     const searchLabels = async (event: ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
         event.preventDefault()
@@ -76,24 +65,6 @@ const ObjectControlPanel: FC = () => {
         }
     }
 
-    const annoList = useMemo(() => {
-        let objs = idoc?.objects;
-        if (objs && objIdx !== undefined) {
-            let annos = objs[objIdx].annotations
-            return (<List className="annotations" key="annoList">
-                {annos?.map((anno, index) =>
-                    <ListItem divider key={'annoItem' + index}>
-                        <ListItemText key={'annoText' + index}>
-                            <Typography variant='h6' color='primary.light'>
-                                {anno.text}
-                            </Typography>
-                        </ListItemText>
-                    </ListItem>)}
-            </List>)
-        }
-        return undefined
-    }, [idoc])
-
     const toProjectView = () => {
         if (project) {
             navigate('/project/' + encodeURIComponent(project.title))
@@ -106,13 +77,6 @@ const ObjectControlPanel: FC = () => {
         }
     }
 
-    useEffect(() => {
-        if (idoc && idoc.objects && objIdx != undefined && labelsMap) {
-            let mappedLabel = getMappedLabel(labelsMap, idoc.objects[objIdx].labelId);
-            setObjectLabel(mappedLabel);
-        }
-    }, [idoc, objIdx, labelsMap]);
-
     return (
         <Box sx={{height: '100%', overflow: 'auto'}}>
             <Box sx={{display: 'flex', mb: 0.5}}>
@@ -121,10 +85,9 @@ const ObjectControlPanel: FC = () => {
                 <IconButton sx={{fontSize: 16, width: 140, color: 'secondary.dark'}} onClick={toProjectView}>
                     <ArrowDropUpIcon sx={{fontSize: 30, ml: -1}}/> Project</IconButton>
             </Box>
-            <Typography sx={{mb: 1, color: 'text.secondary'}} variant='h5'>Object Label
-                "{objectLabel?.name}"</Typography>
+            <Typography sx={{mb: 1, color: 'text.secondary'}} variant='h5'>Create new Object"</Typography>
             <Divider sx={{my: 1}}/>
-            <Typography sx={{mb: 0.5, pt: 1}}>Update Object Label</Typography>
+            <Typography sx={{mb: 0.5, pt: 1}}>Select Object Label and Categories</Typography>
             <Box sx={{display: 'flex'}}>
                 <Autocomplete
                     options={queriedLabels}
@@ -143,20 +106,19 @@ const ObjectControlPanel: FC = () => {
                 <Button disabled={labelUpdValue.length < 3}
                         onClick={handleUpdateLabel}>Update</Button>
             </Box>
-            <Typography sx={{mb: 0.5, pt: 1}}>Categories</Typography>
-            <Box sx={{display: 'flex', mb: 2}}>
-                {objectLabel && objectLabel.categories.map((category, index) =>
-                    <Chip key={'categ' + index} label={<b>{category}</b>} color='primary'
-                          sx={{textShadow: '0px 0.5px 0px black', fontSize: '15px'}}
-                          onDelete={() => {
-                          }}/>)}
-            </Box>
-            <Divider/>
-            {!!annoList && annoList}
+            <Divider sx={{my: 1}}/>
+            <ButtonGroup>
+                <Button onClick={() => dispatch(switchZooming())} variant={isZooming ? "contained" : "outlined"}>
+                    Zoom
+                </Button>
+                <Button onClick={() => resetZoom && resetZoom()} variant="outlined" sx={{ml: 2, flexShrink: 0}}>
+                    Reset Zoom
+                </Button>
+            </ButtonGroup>
             <AlertMessage content={alertContent} setContent={setAlertContent} severity={alertSeverity}
                           displayTime={6000}/>
         </Box>
     )
 }
 
-export default ObjectControlPanel
+export default NewObjectControlPanel
