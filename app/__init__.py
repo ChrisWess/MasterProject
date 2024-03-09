@@ -2,7 +2,6 @@ import os
 from importlib.metadata import version
 
 from apispec import APISpec
-from apispec_pydantic_plugin import PydanticPlugin
 from apispec_webframeworks.flask import FlaskPlugin
 from flask import Flask
 from flask_login import LoginManager
@@ -26,7 +25,7 @@ spec = APISpec(
     title='objexplain-swagger-doc',
     version='1.0.0',
     openapi_version='3.0.2',
-    plugins=[FlaskPlugin(), PydanticPlugin()]
+    plugins=[FlaskPlugin()]
 )
 
 ALLOWED_FILE_EXTS = {'png', 'webp', 'jpg', 'jpeg', 'gif'}

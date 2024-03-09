@@ -276,7 +276,12 @@ def _import_json_dset(project_id, file, bulk_size):
                 existing_label = label_dao.find_by_name(label['name'], projection=("labelIdx", "nameTokens"))
                 if existing_label is None:
                     label_names.append(label['name'])
-                    categories.append(label['categories'])
+                    categs = label['categories']
+                    if not categs:
+                        err_msg = "Provide at least one basic category for an object label!"
+                        application.logger.error(err_msg)
+                        abort(400, err_msg)
+                    categories.append(categs)
                     obj['labelId'] = lid
                     label_map[lid] = None
                 else:
@@ -355,8 +360,8 @@ def _import_zipped_dset(project_id, file, bulk_size):
     fname_prefix = request.args.get('fprefix', None)
     fname_suffix = request.args.get('fsuffix', '_<int:6>')  # TODO: make option <len:7> to just remove the last 7 chars
     # allows input of some categories that describe the type of entities (input comma seperated strings)
-    label_categories = request.args.get('categories', None)
-    label_categories = label_categories.split(',') if label_categories else None
+    label_categories = request.args['categories']
+    label_categories = label_categories.split(',')
     # TODO: allow to extract the categories from the files (e.g. from file names or their contents),
     #  if the dataset contains many types of entities
 

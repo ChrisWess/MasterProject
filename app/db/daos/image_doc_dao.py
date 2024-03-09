@@ -12,6 +12,7 @@ from pymongo import ASCENDING, DESCENDING, TEXT
 from app import config, fs
 from app.db.daos.annotation_dao import AnnotationDAO
 from app.db.daos.base import JoinableDAO, dao_query, dao_update, BaseDAO
+from app.db.daos.label_dao import LabelDAO
 from app.db.daos.object_dao import ObjectDAO
 from app.db.daos.user_dao import UserDAO
 from app.db.daos.vis_feature_dao import VisualFeatureDAO
@@ -417,7 +418,7 @@ class ImgDocDAO(JoinableDAO):
                 for j, anno in enumerate(annos):
                     self._helper_list.append(anno.get('_id', None))
                     annos[j] = anno['text']
-                annos = AnnotationDAO().prepare_annotations(annos, user_id, True, db_session)
+                annos = AnnotationDAO().prepare_annotations(annos, obj['labelId'], user_id, True, db_session)
                 for j, anno in enumerate(annos):
                     aid = self._helper_list[j]
                     if aid is not None:
@@ -449,7 +450,7 @@ class ImgDocDAO(JoinableDAO):
         image, thumb, width, height = self.process_image_data(image)
         has_annos = bool(annotations)
         if has_annos:
-            annotations = AnnotationDAO().prepare_annotations(annotations, user_id, True)
+            annotations = AnnotationDAO().prepare_annotations(annotations, label_id, user_id, True)
         objs = [DetectedObject(id=ObjectId(), label_id=label_id, tlx=0, tly=0, brx=width, bry=height,
                                annotations=annotations, created_by=user_id)]
         doc = ImgDoc(project_id=proj_id, name=name, fname=fname, width=width,

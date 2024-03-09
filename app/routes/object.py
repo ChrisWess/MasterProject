@@ -191,13 +191,25 @@ def update_to_new_label():
         err_msg = 'Your request body must contain the key-value pairs "objectId" and "label"!'
         application.logger.error(err_msg)
         abort(400, err_msg)
+    if 'category' not in args != 'categories' not in args:
+        err_msg = 'Your request body must contain either the key-value pair "category" or "categories"!'
+        application.logger.error(err_msg)
+        abort(400, err_msg)
+    if 'category' in args:
+        categories = args['category']
+    else:
+        categories = args['categories']
+    if not categories:
+        err_msg = "Provide at least one basic category for an object label!"
+        application.logger.error(err_msg)
+        abort(400, err_msg)
     try:
         object_id = ObjectId(args['objectId'])
     except InvalidId:
         err_msg = "The Detected Object ID you provided is not a valid ID!"
         application.logger.error(err_msg)
         abort(404, err_msg)
-    label_id = LabelDAO().add(args['label'], args.get('categories', None))['_id']
+    label_id = LabelDAO().add(args['label'], categories)['_id']
     return ObjectDAO().update_label(object_id, label_id, generate_response=True)
 
 

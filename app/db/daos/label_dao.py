@@ -108,6 +108,8 @@ class LabelDAO(BaseDAO):
         init_proj = ('_id', 'categories')
         existing_label = self.find_by_name(label, projection=init_proj, db_session=db_session)
         if existing_label is None:
+            if not categories:
+                return None
             result = self.add(label, categories, generate_response, db_session=db_session)
             if not generate_response:
                 result = result[1]
@@ -214,9 +216,8 @@ class LabelDAO(BaseDAO):
     def add(self, name, categories, generate_response=False, db_session=None):
         # creates a new label in the labels collection
         tokens, txt_idxs = self._process_label_name(name, db_session)
-        category_info = None
-        if categories is None:
-            categories = self._helper_list
+        if not categories:
+            return None
         elif type(categories) is list:
             for c in categories:
                 self._process_unique_category(c, db_session)
@@ -254,6 +255,8 @@ class LabelDAO(BaseDAO):
         # creates multiple new labels in the labels collection
         num_new_docs = len(names)
         assert num_new_docs == len(categories)
+        if any(not categ for categ in categories):
+            return None
         start_idx = LabelIndexManager().multi_increment_index(num_new_docs, db_session)
         for i, (name, categors) in enumerate(zip(names, categories)):
             tokens, txt_idxs = self._process_label_name(name, db_session)
@@ -408,6 +411,12 @@ class LabelDAO(BaseDAO):
             return {"result": result, "numResults": 1, "status": 200,
                     'model': 'Category', 'isComplete': True}
         return result
+
+    def find_categories_by_label(self, label_id, generate_response=False, db_session=None):
+        categories = self.find_by_id(label_id, projection='categories')
+        if categories is None:
+            return None
+        return self.find_category(categories['categories'], False, generate_response, db_session)
 
     def find_by_category(self, category, projection=None, generate_response=False, db_session=None):
         """

@@ -48,7 +48,11 @@ class DefaultLabelPreprocesser(LabelPreprocesser):
             for token in self.toknizr.analyze(category):
                 pos = token.pos
                 if pos == NOUN or pos == PROPN:
-                    result.append(self._inflector.singular_noun(token.text))
+                    singular = self._inflector.singular_noun(token.text)
+                    if singular:
+                        result.append(singular)
+                    else:
+                        result.append(token.text)
                 else:
                     result.append(token.text)
             if result:

@@ -98,8 +98,9 @@ class ObjectDAO(JoinableDAO):
     @staticmethod
     def validate_object(obj, user_id=None, db_session=None):
         annos = obj.get("annotations", None)
+        label_dao = LabelDAO()
         if 'label' in obj:
-            label = LabelDAO().find_dynamic(obj['label'], projection='_id', db_session=db_session)
+            label = label_dao.find_dynamic(obj['label'], projection='_id', db_session=db_session)
             if label is None:
                 err_msg = f'Object data refers to a label with info "{obj["label"]}" that could not be found!'
                 application.logger.error(err_msg)
@@ -108,9 +109,9 @@ class ObjectDAO(JoinableDAO):
             del obj['label']
             obj['labelId'] = label_id
         else:
-            obj['labelId'] = ObjectId(obj['labelId'])
+            label_id = obj['labelId'] = ObjectId(obj['labelId'])
         if annos:
-            AnnotationDAO().prepare_annotations(annos, user_id, db_session=db_session)
+            AnnotationDAO().prepare_annotations(annos, label_id, user_id, db_session=db_session)
         if user_id:
             obj['createdBy'] = user_id
         for key, new_key in ObjectDAO.bbox_alias_mapping.items():
@@ -285,10 +286,11 @@ class ObjectDAO(JoinableDAO):
                 label_id = label['_id']
             if isinstance(annotations, str):
                 self._helper_list.append(
-                    AnnotationDAO().prepare_annotation(annotations, user_id, db_session))
+                    AnnotationDAO().prepare_annotation(annotations, label_id, user_id, db_session))
                 annotations = self._helper_list
             else:
-                annotations = AnnotationDAO().prepare_annotations(annotations, user_id, db_session=db_session)
+                annotations = AnnotationDAO().prepare_annotations(annotations, label_id, user_id,
+                                                                  db_session=db_session)
         obj = DetectedObject(id=ObjectId(), labelId=label_id, annotations=annotations, tlx=bbox[0],
                              tly=bbox[1], brx=bbox[2], bry=bbox[3], created_by=user_id)
         # pushes new object into image document

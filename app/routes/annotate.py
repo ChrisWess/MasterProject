@@ -107,20 +107,20 @@ def annotate():
     try:
         object_id = args["objectId"]
         obj_id = ObjectId(object_id)
-        obj = ImgDocDAO().find_by_object(obj_id, projection='projectId')
+        obj = ImgDocDAO().find_by_object(obj_id, projection=('projectId', 'objects.labelId'))
         if obj is None:
             err_msg = "No Detected Object with the given ID could be found!"
             application.logger.error(err_msg)
             abort(404, err_msg)
         if 'annotation' in args:
-            response = AnnotationDAO().add(obj_id, args['annotation'], obj['_id'],
-                                           obj['projectId'], generate_response=True)
+            response = AnnotationDAO().add(obj_id, args['annotation'], obj['objects'][0]['labelId'],
+                                           obj['_id'], obj['projectId'], generate_response=True)
             application.logger.info(f"Added new annotation {response['result']} to object {object_id} !")
         else:
             annotations = args['annotations']
             if isinstance(annotations, str):
                 annotations = loads(annotations)
-            response = AnnotationDAO().add_many(obj_id, annotations, obj['_id'],
+            response = AnnotationDAO().add_many(obj_id, annotations, obj['_id'], obj['objects'][0]['labelId'],
                                                 obj['projectId'], generate_response=True)
             application.logger.info(f"Added {response['numResults']} new annotations to object {object_id} !")
         return response

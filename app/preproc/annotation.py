@@ -8,7 +8,12 @@ from spacy.tokens import Token
 
 from app.autoxplain.base.tokenize import tokenizer
 
-np_pos_labels = {ADJ, VERB, ADV, NOUN, PROPN, PRON, NUM, CCONJ, PUNCT}
+adj_candidates = {ADJ, VERB, ADV}
+noun_candidates = {NOUN, PROPN}
+conj_pos_labels = {CCONJ, PUNCT}
+np_pos_labels = set()
+np_pos_labels.update(adj_candidates, noun_candidates, conj_pos_labels)
+final_punct = {'.', '!', '?'}
 
 
 @dataclass
@@ -57,11 +62,11 @@ class AnnotationPreprocesser:
         return self.toknizr(annotation)
 
     @abstractmethod
-    def extract_noun_phrases(self, text):
+    def extract_noun_phrases(self, text, categories):
         pass
 
     @abstractmethod
-    def extract_phrases_multi_line(self, lines):
+    def extract_phrases_multi_line(self, lines, categories):
         pass
 
 
@@ -77,112 +82,165 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
         self.adjs = []
         self.nouns = []
 
-    def extract_noun_phrases(self, text):
+    def _process_np_token(self, root_noun, word, prev, start_idx, end_idx, split_token):
+        if split_token:
+            assert start_idx is not None
+            replace_root = False
+            if split_token.pos in adj_candidates:
+                word_list = self.adjs
+            else:
+                replace_root = split_token == root_noun or word == root_noun
+                word_list = self.nouns
+            end_idx = word.i
+            word = MyToken(word_list.pop().text + prev.text + word.text, split_token.pos, end_idx)
+            if replace_root:
+                root_noun = word
+            split_token = None
+            word_list.append(word)
+        else:
+            curr_pos = word.pos
+            if curr_pos in np_pos_labels:
+                found = False
+                if word.lower_ == '-':
+                    if prev and prev.pos in adj_candidates or prev.pos in noun_candidates:
+                        split_token = prev
+                elif curr_pos in adj_candidates:
+                    found = True
+                    if start_idx is not None:
+                        end_idx = word.i
+                    self.adjs.append(word)
+                elif curr_pos in noun_candidates:
+                    found = True
+                    if start_idx is not None:
+                        end_idx = word.i
+                    self.nouns.append(word)
+                if found and start_idx is None:
+                    start_idx = word.i
+                self.noun_phrase_chunks.append(word)
+        return root_noun, word, start_idx, end_idx, split_token
+
+    def _process_phrase(self, np, root_noun, categories):
+        start_idx = end_idx = split_token = prev = None
+        for word in np:
+            if np.end == word.i + 1 and not self.adjs:
+                self.adjs.clear()
+                self.nouns.clear()
+                return None
+            root_noun, word, start_idx, end_idx, split_token = self._process_np_token(
+                root_noun, word, prev, start_idx, end_idx, split_token)
+            prev = word
+        if end_idx:
+            end_idx += 1
+        self.noun_phrase_chunks.clear()
+        filt_adjs = tuple(adj for adj in self.adjs if len(adj.text) > 1)
+        if len(filt_adjs) == 0:
+            self.adjs.clear()
+            self.nouns.clear()
+            return None
+        idx = 0
+        while idx < len(self.nouns):
+            noun = self.nouns[idx]
+            if noun.lower_ in categories:
+                if noun == root_noun:
+                    root_noun = MyToken('subject', NOUN, noun.i)
+                del self.nouns[idx]
+            else:
+                idx += 1
+        return root_noun, filt_adjs, start_idx, end_idx
+
+    def extract_noun_phrases(self, text, categories):
         # https://towardsdatascience.com/enhancing-keybert-keyword-extraction-results-with-keyphrasevectorizers-3796fa93f4db
         # https://stackoverflow.com/questions/57049737/how-can-i-extract-all-phrases-from-a-sentence
         self.curr_tokens.clear()
         tokenized = self.toknizr.analyze(text)
-        skip = False
         for np in tokenized.noun_chunks:
             # Noun chunks are spacy spans
+            root_noun = np.root
             if len(np) == 1:
                 continue
-            root_noun = np.root
+            # TODO: also check retrospectively, if any adjectives were left out (do not belong to noun phrases),
+            #  because in this work, they almost always refer to the object in question!
+            #  => Can spacy show to which noun an adjective refers to?
             # TODO: Join noun phrases if they belong to each other (with e.g. "and/or" => "white belly and breast")
             #  => should also be able to handle enumerations (e.g. black wings, beak, back and head): make adj and
             #  noun pairs from this like (black wings), (black beak) etc.
             #  "beak" should be able to refer to the concept "black beak", although it takes up only 1 token
             #  in the annotation text.
-            start_idx = end_idx = split_token = prev = None
-            for word in np:
-                if np.end == word.i + 1 and not self.adjs and not self.nouns:
-                    skip = True
-                    break
-                if split_token:
-                    assert start_idx is not None
-                    replace_root = False
-                    if split_token.pos == ADJ:
-                        word_list = self.adjs
-                    else:
-                        replace_root = split_token == root_noun or word == root_noun
-                        word_list = self.nouns
-                    end_idx = word.i
-                    word = MyToken(word_list.pop().text + prev.text + word.text, split_token.pos, end_idx)
-                    if replace_root:
-                        root_noun = word
-                    split_token = None
-                    word_list.append(word)
-                else:
-                    curr_pos = word.pos
-                    # TODO: if an adverb is in front of an adjective (e.g. "very"), is it worth to include?
-                    #  Processes more information, but disadvantage is that concepts get more complex
-                    #  => it would be nice to identify very similar concepts as the same concepts.
-                    if curr_pos in np_pos_labels:
-                        found = False
-                        # TODO: https://stackoverflow.com/questions/3788870/how-to-check-if-a-word-is-an-english-word-with-python
-                        #  Try to enforce spell checking as much as possible in the frontend, but just use a suggest()
-                        #  function like shown in the link and select the top suggestion in the backend as a last resort,
-                        #  when encountering a spelling error.
-                        if word.lower_ == '-':
-                            if prev and (prev.pos == ADJ or prev.pos == NOUN or prev.pos == PROPN):
-                                split_token = prev
-                        elif curr_pos == ADJ:
-                            # TODO: Adjectives are often mistaken for Verbs (and in consequence, other adjectives
-                            #  are then often mistaken for Adverbs). How to fix this? Best way would be to check
-                            #  a noun phrase with verbs and adverbs again, if it is more likely that they are
-                            #  actually adjectives or if the NLP model is certain that it must be a verb.
-                            #  But what tool to use to achieve this?
-                            found = True
-                            if start_idx is not None:
-                                end_idx = word.i
-                            self.adjs.append(word)
-                        elif curr_pos == NOUN or curr_pos == PROPN or curr_pos == PRON:
-                            found = True
-                            if start_idx is not None:
-                                end_idx = word.i
-                            self.nouns.append(word)
-                        if found and start_idx is None:
-                            start_idx = word.i
-                        self.noun_phrase_chunks.append(word)
-                prev = word
-            if skip:
-                skip = False
+            # TODO: if an adverb is in front of an adjective (e.g. "very"), is it worth to include?
+            #  Processes more information, but disadvantage is that concepts get more complex
+            #  => it would be nice to identify very similar concepts as the same concepts.
+            # TODO: https://stackoverflow.com/questions/3788870/how-to-check-if-a-word-is-an-english-word-with-python
+            #  Try to enforce spell checking as much as possible in the frontend, but just use a suggest()
+            #  function like shown in the link and select the top suggestion in the backend as a last resort,
+            #  when encountering a spelling error.
+            proc_res = self._process_phrase(np, root_noun, categories)
+            if proc_res is None:
                 continue
-            if end_idx:
-                end_idx += 1
-            # TODO: also check retrospectively, if any adjectives were left out (do not belong to noun phrases),
-            #  because in this work, they almost always refer to the object in question!
-            #  => Can spacy show to which noun an adjective refers to?
-            self.noun_phrase_chunks.clear()
-            filt_adjs = tuple(adj for adj in self.adjs if len(adj.text) > 1)
-            if len(filt_adjs) == 0:
-                self.adjs.clear()
-                self.nouns.clear()
-                continue
-            # self.noun_phrase_chunks.append(filtered_nouph)
+            root_noun, filt_adjs, start_idx, end_idx = proc_res
             if len(self.nouns) > 1:
                 np = NounPhrase(start=start_idx, end=end_idx, root_noun=root_noun,
                                 nouns=tuple(self.nouns), adjs=filt_adjs)
-            elif len(self.nouns) == 1:
-                # TODO: noun phrase might contain something like "it has/is ..." or "which has/is ...", then the
-                #  adjectives clearly refer to the subject and a noun might be omitted, however the latter case
-                #  might not be a noun phrase (maybe save these edge cases and try to analyze them separately/manually).
-                #  Cases like "it is blue" typically means that its body/fur/outer color is blue.
-                #  Exchange all cases like "it/which" with the default string "subject", if this has
-                #  adjectives assigned and save them for later analysis.
-                assert self.nouns[0] == root_noun, \
-                    f'Noun "{self.nouns[0]}" in the noun list should be the root "{root_noun}"!'
-                np = NounPhrase(start=start_idx, end=end_idx, root_noun=root_noun, adjs=filt_adjs)
             else:
-                np = NounPhrase(start=start_idx, end=end_idx,
-                                root_noun=MyToken('subject', NOUN, end_idx), adjs=filt_adjs)
+                np = NounPhrase(start=start_idx, end=end_idx, root_noun=root_noun, adjs=filt_adjs)
+            # TODO: noun phrase might contain something like "it has/is ..." or "which has/is ...", then the
+            #  adjectives clearly refer to the subject and a noun might be omitted, however the latter case
+            #  might not be a noun phrase (maybe save these edge cases and try to analyze them separately/manually).
+            #  Cases like "it is blue" typically means that its body/fur/outer color is blue.
+            #  Exchange all cases like "it/which" with the default string "subject", if this has
+            #  adjectives assigned and save them for later analysis.
             yield np
             self.adjs.clear()
             self.nouns.clear()
         for tok in tokenized:
             self.curr_tokens.append(tok.lower_)
 
-    def extract_phrases_multi_line(self, lines):
+    def _check_noun_context_multi_line(self, doc, root_noun, prev_np, end_idx, line_start, line_end):
+        # Check in front of the noun
+        idx = root_noun.i - 1
+        new_start = None
+        is_at_start = False
+        if end_idx is not None:
+            until_idx = end_idx
+        elif idx >= line_start:
+            until_idx = line_start
+            is_at_start = True
+        else:
+            until_idx = idx + 1
+        while idx >= until_idx:
+            word = doc[idx]
+            curr_pos = word.pos
+            if curr_pos in adj_candidates:
+                self.adjs.append(word)
+            elif curr_pos not in conj_pos_labels or word.text in final_punct:
+                break
+            idx -= 1
+        else:
+            if prev_np and not (self.adjs or is_at_start):
+                self.adjs.extend(prev_np.adjs)
+                new_start = root_noun.i
+        if self.adjs:
+            if new_start is None:
+                new_start = self.adjs[0].i
+            self.nouns.append(root_noun)
+            return new_start, root_noun.i + 1
+        # Check behind the noun
+        idx = root_noun.i + 1
+        if doc[idx].lower_ == 'is':
+            idx += 1
+            while idx < line_end:
+                word = doc[idx]
+                curr_pos = word.pos
+                if curr_pos in adj_candidates:
+                    self.adjs.append(word)
+                elif curr_pos not in conj_pos_labels or word.text in final_punct:
+                    break
+                idx += 1
+            if self.adjs:
+                self.nouns.append(root_noun)
+                return root_noun.i, self.adjs[-1].i + 1
+        return None
+
+    def extract_phrases_multi_line(self, lines, categories):
         self.curr_tokens.clear()
         tokenized = self.toknizr.analyze(lines)
         line_idxs = deque()
@@ -194,91 +252,53 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
                 self.curr_tokens.append([])
             else:
                 self.curr_tokens[-1].append(t)
+        start_idx = end_idx = prev_np = None
         line_start = 0
         line_end = line_idxs.popleft() if line_idxs else None
-        skip = line_ended = False
+        line_ended = False
         for np in tokenized.noun_chunks:
-            if len(np) == 1:
-                continue
             root_noun = np.root
-            start_idx = end_idx = split_token = prev = None
-            for word in np:
-                if np.end == word.i + 1 and not self.adjs and not self.nouns:
-                    skip = True
-                    break
-                if word.i > line_end:
-                    if line_ended:
+            if root_noun.i > line_end:
+                if line_ended:
+                    yield None, line_ended
+                else:
+                    line_ended = True
+                while line_idxs:
+                    line_start = line_end + 1
+                    line_end = line_idxs.popleft()
+                    if root_noun.i > line_end:
                         yield None, line_ended
                     else:
-                        line_ended = True
-                    while line_idxs:
-                        line_start = line_end + 1
-                        line_end = line_idxs.popleft()
-                        if word.i > line_end:
-                            yield None, line_ended
-                        else:
-                            break
-                    else:
-                        line_start = line_end + 1
-                        line_end = len(tokenized)
-                if split_token:
-                    assert start_idx is not None
-                    replace_root = False
-                    if split_token.pos == ADJ:
-                        word_list = self.adjs
-                    else:
-                        replace_root = split_token == root_noun or word == root_noun
-                        word_list = self.nouns
-                    end_idx = word.i
-                    word = MyToken(word_list.pop().text + prev.text + word.text, split_token.pos, end_idx)
-                    if replace_root:
-                        root_noun = word
-                    split_token = None
-                    word_list.append(word)
+                        break
                 else:
-                    curr_pos = word.pos
-                    if curr_pos in np_pos_labels:
-                        found = False
-                        if word.lower_ == '-':
-                            if prev and (prev.pos == ADJ or prev.pos == NOUN or prev.pos == PROPN):
-                                split_token = prev
-                        elif curr_pos == ADJ:
-                            found = True
-                            if start_idx is not None:
-                                end_idx = word.i
-                            self.adjs.append(word)
-                        elif curr_pos == NOUN or curr_pos == PROPN or curr_pos == PRON:
-                            found = True
-                            if start_idx is not None:
-                                end_idx = word.i
-                            self.nouns.append(word)
-                        if found and start_idx is None:
-                            start_idx = word.i
-                        self.noun_phrase_chunks.append(word)
-                prev = word
-            if skip:
-                skip = False
-                continue
-            if end_idx:
-                end_idx += 1
-            self.noun_phrase_chunks.clear()
-            filt_adjs = tuple(adj for adj in self.adjs if len(adj.text) > 1)
-            if len(filt_adjs) == 0:
-                self.adjs.clear()
-                self.nouns.clear()
-                continue
+                    line_start = line_end + 1
+                    line_end = len(tokenized)
+            if len(np) == 1:
+                if root_noun.lower_ in categories or root_noun.pos == PRON:
+                    root_noun = MyToken('subject', NOUN, root_noun.i)
+                context = self._check_noun_context_multi_line(tokenized, root_noun, prev_np,
+                                                              end_idx, line_start, line_end)
+                if context is None:
+                    continue
+                filt_adjs = tuple(adj for adj in self.adjs if len(adj.text) > 1)
+                if len(filt_adjs) == 0:
+                    self.adjs.clear()
+                    self.nouns.clear()
+                    continue
+                start_idx, end_idx = context
+            else:
+                proc_res = self._process_phrase(np, root_noun, categories)
+                if proc_res is None:
+                    continue
+                root_noun, filt_adjs, start_idx, end_idx = proc_res
             if len(self.nouns) > 1:
                 np = NounPhrase(start=start_idx - line_start, end=end_idx - line_start, root_noun=root_noun,
                                 nouns=tuple(self.nouns), adjs=filt_adjs)
-            elif len(self.nouns) == 1:
-                assert self.nouns[0] == root_noun, \
-                    f'Noun "{self.nouns[0]}" in the noun list should be the root "{root_noun}"!'
-                np = NounPhrase(start=start_idx - line_start, end=end_idx - line_start,
-                                root_noun=root_noun, adjs=filt_adjs)
             else:
                 np = NounPhrase(start=start_idx - line_start, end=end_idx - line_start,
-                                root_noun=MyToken('subject', NOUN, end_idx), adjs=filt_adjs)
+                                root_noun=root_noun, adjs=filt_adjs)
             yield np, line_ended
             line_ended = False
+            prev_np = np
             self.adjs.clear()
             self.nouns.clear()

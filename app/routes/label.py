@@ -9,9 +9,9 @@ from app import application
 from app.db.daos.label_dao import LabelDAO
 
 
-# @application.route('/label', methods=['GET'])
-# def find_all_labels():
-#     return LabelDAO().find_all(projection=request.args, generate_response=True)
+@application.route('/label/all', methods=['GET'])
+def find_all_labels():
+    return LabelDAO().find_all(projection=request.args, generate_response=True)
 
 
 @application.route('/label', methods=['GET'])
@@ -99,10 +99,18 @@ def create_label():
         if "name" not in args:
             err_msg = 'Your request body must contain the key-value pair with key "name"!'
             abort(400, err_msg)
-        if 'category' in args and 'categories' in args:
-            err_msg = 'Your request body can only contain one key out of "category" or "categories"!'
+        if 'category' not in args != 'categories' not in args:
+            err_msg = 'Your request body must contain either the key-value pair "category" or "categories"!'
+            application.logger.error(err_msg)
             abort(400, err_msg)
-        categories = args.get('category', args.get('categories', None))
+        if 'category' in args:
+            categories = args['category']
+        else:
+            categories = args['categories']
+        if not categories:
+            err_msg = "Provide at least one basic category for an object label!"
+            application.logger.error(err_msg)
+            abort(400, err_msg)
         response = LabelDAO().add(args["name"], categories, generate_response=True)
         application.logger.info("Label inserted: " + response['result'])
         return response
