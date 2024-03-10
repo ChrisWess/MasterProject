@@ -16,7 +16,7 @@ import {ImageDocument} from "../api/models/imgdoc";
 
 
 const MainControlPanel: FC = () => {
-    const [imageName, setImageName] = useState<string>();
+    const [imageName, setImageName] = useState<string>('');
     const [imageFile, setImageFile] = useState<any>();
     const [importFile, setImportFile] = useState<any>();
     const [alertContent, setAlertContent] = useState<string>();
@@ -45,7 +45,7 @@ const MainControlPanel: FC = () => {
 
     const insertImage = async (event: any) => {
         event.preventDefault();
-        if (project && !!imageName && imageName.length >= 3 && !!imageFile) {
+        if (project && imageName.length >= 3 && !!imageFile) {
             let formData = new FormData();
             formData.append('name', imageName);
             formData.append('image', imageFile);
@@ -190,7 +190,7 @@ const MainControlPanel: FC = () => {
                        accept="image/jpeg,image/png,image/gif,image/webp"/>
                 <Button variant="outlined"
                         sx={{textTransform: "none", flexGrow: 100}}
-                        type="submit" disabled={!imageName || !imageFile || imageName.trim().length < 3}>Upload</Button>
+                        type="submit" disabled={!imageFile || imageName.trim().length < 3}>Upload</Button>
             </Box>
             <Divider sx={{my: 1}}/>
             <Typography sx={{mb: 0.5, pt: 1}}>Dataset Import</Typography>

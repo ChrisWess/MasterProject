@@ -16,7 +16,7 @@ import ArrowLeftIcon from '@mui/icons-material/ArrowLeft';
 import LabelIcon from '@mui/icons-material/Label';
 import AddIcon from '@mui/icons-material/Add';
 import {useDispatch, useSelector} from "react-redux";
-import {getRequest, putRequest} from "../api/requests";
+import {deleteRequest, getRequest, putRequest} from "../api/requests";
 import {ProjectStats} from "../api/models/project";
 import Typography from "@mui/material/Typography";
 import AlertMessage from "../components/AlertMessage";
@@ -26,6 +26,7 @@ import {setTitle} from "../reducers/appBarSlice";
 import {
     clearDoc,
     disableAnnoMode,
+    removeObjectAt,
     setDoc,
     setLabelMap,
     switchObjectsVisible,
@@ -42,12 +43,15 @@ import {DetectedObject} from "../api/models/object";
 
 
 const fetchLabels = async (labelIds: string[]) => {
-    let labelPayload = JSON.stringify(labelIds);
-    const data = await getRequest('label', undefined,
-        {ids: labelPayload, name: 1, categories: 1})
-    if (data) {
-        return data.result;
+    if (labelIds.length > 0) {
+        let labelPayload = JSON.stringify(labelIds);
+        const data = await getRequest('label', undefined,
+            {ids: labelPayload, name: 1, categories: 1})
+        if (data) {
+            return data.result;
+        }
     }
+    return []
 }
 
 export const mapLabels = async (idoc: ImageDocument | undefined) => {
@@ -77,6 +81,29 @@ const DocControlPanel: FC = () => {
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
     const labelsMap: [string, Label][] | undefined = useSelector((state: any) => state.iDoc.labelMap);
     const objsVis: boolean[] | undefined = useSelector((state: any) => state.iDoc.objsVis);
+
+    const deleteObject = (objId: string) => {
+        if (idoc && idoc.objects) {
+            let objIdx = idoc.objects.findIndex(value => value._id === objId);
+            if (objIdx >= 0) {
+                deleteRequest('object', objId).then(data => {
+                    if (data) {
+                        dispatch(removeObjectAt(objIdx));
+                    } else {
+                        setAlertSeverity('error')
+                        setAlertContent('Error while deleting the object!')
+                    }
+                }).catch(error => {
+                    // TODO: add such a catch to all other requests
+                    setAlertSeverity('error')
+                    setAlertContent(error.message)
+                })
+            } else {
+                setAlertSeverity('error')
+                setAlertContent('Object with the given ID does not exist in the List of objects!')
+            }
+        }
+    }
 
     const renameImage = async (textInput: string) => {
         if (idoc !== undefined) {
@@ -124,7 +151,7 @@ const DocControlPanel: FC = () => {
                                     <VisibilityOutlinedIcon/> :
                                     <VisibilityOffOutlinedIcon/>}
                             </IconButton>
-                            <IconButton aria-label="comment">
+                            <IconButton aria-label="comment" onClick={() => deleteObject(obj._id)}>
                                 <DeleteIcon sx={{color: 'text.secondary'}}/>
                             </IconButton>
                         </ListItemIcon>

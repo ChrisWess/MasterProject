@@ -95,6 +95,17 @@ def find_categories():
     return LabelDAO().find_all_categories(args.get('expand', False), generate_response=True)
 
 
+@application.route('/category/<category>/<label_id>', methods=['DELETE'])
+def delete_category_from_label(category, label_id):
+    delete_unref = request.args.get('deleteIfUnref', False)
+    try:
+        return LabelDAO().remove_category_from_label(category, label_id, delete_unref, True)
+    except InvalidId:
+        err_msg = "The Label ID you provided is not a valid ID!"
+        application.logger.error(err_msg)
+        abort(404, err_msg)
+
+
 @application.route('/label', methods=['POST'])
 def create_label():
     try:

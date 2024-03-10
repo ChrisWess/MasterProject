@@ -1265,7 +1265,7 @@ class BaseDAO(AbstractDAO):
     def _remove_stat_ids_from_helper(self, db_session):
         from app.db.stats.daos.base import BaseStatsDAO
         if self.location:
-            for i, (id_list, sdaos) in enumerate(zip(self._helper_list, self.stat_references), start=1):
+            for i, (id_list, sdaos) in enumerate(zip(self._helper_list, self.stat_references)):
                 if sdaos is not None:
                     for sdao in sdaos:
                         if issubclass(sdao, BaseStatsDAO):
@@ -1426,7 +1426,7 @@ class BaseDAO(AbstractDAO):
     def delete_nested_doc_by_id(self, entity_id, generate_response=False, db_session=None):
         """ Remove the nested DB document with the given ID from the array that contains this document """
         try:
-            self._query_matcher[self._parent_prefix + '_id'] = entity_id
+            self._query_matcher[self._loc_prefix + '_id'] = entity_id
             self._field_check['_id'] = entity_id
             return self._delete_nested_docs(generate_response, db_session)
         finally:

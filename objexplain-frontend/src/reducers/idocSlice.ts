@@ -48,6 +48,18 @@ export const idocSlice = createSlice({
         setDoc: (state, action: PayloadAction<ImageDocument>) => {
             state.document = action.payload;
         },
+        removeObjectAt: (state, action: PayloadAction<number>) => {
+            let currDoc = state.document
+            if (currDoc !== undefined && currDoc.objects) {
+                currDoc.objects.splice(action.payload);
+                state.document = currDoc
+                let newVis = state.objsVis
+                if (newVis) {
+                    newVis.splice(action.payload)
+                    state.objsVis = newVis
+                }
+            }
+        },
         initVisibleObjs: (state, action: PayloadAction<number>) => {
             state.objsVis = Array(action.payload).fill(true);
         },
@@ -194,7 +206,7 @@ export const idocSlice = createSlice({
 // actions
 export const {
     switchObjectsVisible, switchObjVisible, setDoc,
-    clearDoc, initVisibleObjs, setImgUrl,
+    clearDoc, removeObjectAt, initVisibleObjs, setImgUrl,
     setLabelMap, resetLabelMap, enableAnnoMode, disableAnnoMode,
     nextIdx, prevIdx, loadInNewDocs, loadInOlderDocs,
 } = idocSlice.actions;

@@ -92,7 +92,7 @@ const ObjectControlPanel: FC = () => {
                 "{objectLabel?.name}"</Typography>
             <Divider sx={{my: 1}}/>
             <LabelSelect labelCaption="Update Object Label" labelButtonText='Update'
-                         categoriesCaption='Categories of the Label'
+                         categoriesCaption='Categories of the Label' categoryButtonText='Insert'
                          categoriesDescriptor='Add further Categories: ' makeNewObject={false}
                          setAlertContent={setAlertContent} setAlertSeverity={setAlertSeverity}/>
             <Divider/>

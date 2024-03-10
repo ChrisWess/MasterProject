@@ -18,7 +18,7 @@ class LabelDAO(BaseDAO):
     def __init__(self):
         # Initialize mongodb collection of documents
         super().__init__("labels", Label, LabelPayload)
-        self.create_index('name_index', ("name", ASCENDING), unique=True)
+        self.create_index('name_index', ("lower", ASCENDING), unique=True)
         self.create_index('label_index', ("labelIdx", ASCENDING), unique=True)
 
         self.categories = mdb.categories
@@ -301,13 +301,15 @@ class LabelDAO(BaseDAO):
             self._add_label_ref_to_category(category, label_idx, db_session)
         return category
 
-    def remove_category_from_label(self, category, label, delete_if_unreferenced=False, db_session=None):
+    def remove_category_from_label(self, category, label, delete_if_unreferenced=False,
+                                   generate_response=False, db_session=None):
         """
         Remove the given category from the label's categories.
         :param category: the string of the category
         :param label: Either label index or the label ID
         :param delete_if_unreferenced: If True, when the category is not assigned to any labels
                                        after the removal, delete the category.
+        :param generate_response:
         :param db_session:
         :return: The category document, if it exists else None
         """
@@ -326,14 +328,14 @@ class LabelDAO(BaseDAO):
             raise ValueError(f'No Label with identifier "{label}" and with category "{category}" could be found!')
         else:
             label_idx = label_idx['labelIdx']
-        self.array_update('categories', category, ('labelIdx', label_idx), False, True, True, db_session)
+        result = self.array_update('categories', category, ('labelIdx', label_idx), False, True, True, db_session)
         if delete_if_unreferenced:
             category_doc = self.find_category(category, db_session=db_session)
             if len(category_doc['labelIdxRefs']) == 1:
                 self._query_matcher['_id'] = category
                 self.categories.delete_one(self._query_matcher, session=db_session)
                 self._query_matcher.clear()
-                return category
+                return self.to_response(result, operation=BaseDAO.DELETE) if generate_response else result
         self._query_matcher['_id'] = category
         self._pull_op['labelIdxRefs'] = label_idx
         self._update_commands['$pull'] = self._pull_op
@@ -341,6 +343,7 @@ class LabelDAO(BaseDAO):
         self._pull_op.clear()
         self._update_commands.clear()
         self._query_matcher.clear()
+        return self.to_response(result, operation=BaseDAO.DELETE) if generate_response else result
 
     def find_all_categories(self, unroll_labels=False, generate_response=False, db_session=None):
         if unroll_labels:

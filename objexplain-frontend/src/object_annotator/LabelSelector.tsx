@@ -1,8 +1,8 @@
-import {ChangeEvent, FC, useEffect, useState} from "react";
+import {FC, useEffect, useState} from "react";
 import Box from "@mui/material/Box";
 import {Autocomplete, Button, Chip, Select, SelectChangeEvent, TextField} from "@mui/material";
 import {useDispatch, useSelector} from "react-redux";
-import {getRequest, postRequest, putRequest} from "../api/requests";
+import {deleteRequest, getRequest, postRequest, putRequest} from "../api/requests";
 import {resetLabelMap} from "../reducers/idocSlice";
 import Typography from "@mui/material/Typography";
 import {Label} from "../api/models/label";
@@ -19,6 +19,7 @@ interface LabelSelectProps {
     categoriesCaption: string;
     categoriesDescriptor: string;
     labelButtonText: string;
+    categoryButtonText: string;
     makeNewObject: boolean;  // false := label update
     setAlertContent: Function;
     setAlertSeverity: Function;
@@ -26,12 +27,22 @@ interface LabelSelectProps {
 }
 
 const LabelSelect: FC<LabelSelectProps> = ({
-                                               labelCaption, categoriesCaption, categoriesDescriptor, labelButtonText,
-                                               makeNewObject, setAlertContent, setAlertSeverity, ...params
+                                               labelCaption,
+                                               categoriesCaption,
+                                               categoriesDescriptor,
+                                               labelButtonText,
+                                               categoryButtonText,
+                                               makeNewObject,
+                                               setAlertContent,
+                                               setAlertSeverity,
+                                               ...params
                                            }) => {
     const [labelValue, setLabelValue] = useState<string>('');
+    const [labelIdx, setLabelIdx] = useState<number>();
     const [queriedLabels, setQueriedLabels] = useState<any[]>([]);
     const [categoryList, setCategoryList] = useState<string[]>();
+    const [category, setCategory] = useState<string>('');
+    const [assignedCategories, setAssignedCategories] = useState<string[]>([]);
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
     const navigate = useNavigate();
@@ -41,22 +52,48 @@ const LabelSelect: FC<LabelSelectProps> = ({
     const objectLabel: Label | undefined = useSelector((state: any) => state.object.objectLabel);
     const newBbox: any | undefined = useSelector((state: any) => state.newObj.newBbox);
 
-    const searchLabels = async (event: ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+    const searchLabels = async (event: any, value?: any) => {
         event.preventDefault()
-        let input = event.target.value
-        if (input.length > 2) {
-            input = input.charAt(0).toUpperCase() + input.slice(1).toLowerCase();
-            let data = await getRequest('label/search', undefined, {query: input})
+        let queryLabels;
+        let stringInput: string;
+        if (value) {
+            stringInput = value.lower;
+        } else {
+            stringInput = event.target.value;
+        }
+        if (stringInput.length > 2) {
+            let data = await getRequest('label/search', undefined,
+                {query: stringInput.toLowerCase()})
             if (data) {
                 let result = data.result
-                setQueriedLabels(result.map((value: [string, string]) => {
-                    return {id: value[0], label: value[1]}
-                }));
+                queryLabels = result.map((value: [string, string]) => {
+                    return {id: value[0], label: value[1], lower: value[1].toLowerCase()}
+                });
             }
         } else {
-            setQueriedLabels([]);
+            queryLabels = [];
         }
-        setLabelValue(input);
+        setLabelValue(stringInput);
+        return {result: queryLabels, value: stringInput}
+    }
+
+    const fetchLabelCategories = async (queryResult: any) => {
+        let labelList: any[] = queryResult.result;
+        let valueIdx = labelList.findIndex(value => value.lower === queryResult.value.toLowerCase());
+        if (valueIdx >= 0) {
+            let match = labelList[valueIdx];
+            if (makeNewObject) {
+                getRequest('label', match.id, {categories: 1}).then(
+                    data => data && setAssignedCategories(data.result.categories))
+            }
+            setLabelIdx(valueIdx)
+        } else if (labelIdx !== undefined && labelIdx >= 0) {
+            setLabelIdx(undefined)
+            if (makeNewObject) {
+                setAssignedCategories([])
+            }
+        }
+        setQueriedLabels(labelList);
     }
 
     const fetchLabel = async (labelId: string) => {
@@ -64,21 +101,33 @@ const LabelSelect: FC<LabelSelectProps> = ({
     }
 
     const handleUpdateLabel = async () => {
-        if (labelValue && detObj) {
-            let data;
-            let objId = detObj._id;
-            let valueIdx = queriedLabels.findIndex(value => value.label === labelValue);
-            if (valueIdx === -1) {
-                data = await postRequest('object/label/new', {objectId: objId, label: labelValue})
+        if (detObj && objectLabel) {
+            let data = undefined;
+            if (labelValue) {
+                let objId = detObj._id;
+                // TODO: save the label index in a state, if the input matches a label in the list
+                let valueIdx = queriedLabels.findIndex(value => value.lower === labelValue);
+                if (valueIdx === -1) {
+                    data = await postRequest('object/label/new', {objectId: objId, label: labelValue})
+                } else {
+                    let newLabelId = queriedLabels[valueIdx].id;
+                    if (newLabelId === objectLabel._id) {
+                        if (selectedCategories.length !== 0) {
+                            // TODO: add selected category
+                        }
+                    } else {
+                        data = await putRequest('object/label',
+                            {objectId: objId, labelId: newLabelId})
+                    }
+                }
+                if (data) {
+                    fetchLabel(data.result.updatedTo.objects.labelId).then(
+                        label => label && dispatch(setObjectLabel(label)))
+                    setLabelValue('')
+                    dispatch(resetLabelMap())
+                }
             } else {
-                let newLabelId = queriedLabels[valueIdx].id;
-                data = await putRequest('object/label', {objectId: objId, labelId: newLabelId})
-            }
-            if (data) {
-                fetchLabel(data.result.updatedTo.objects.labelId).then(
-                    label => label && dispatch(setObjectLabel(label)))
-                setLabelValue('')
-                dispatch(resetLabelMap())
+
             }
         }
     }
@@ -115,12 +164,40 @@ const LabelSelect: FC<LabelSelectProps> = ({
         // TODO: show errors when failed
     }
 
-    const deleteCategory = async () => {
-
+    const deleteCategory = async (category: string) => {
+        if (objectLabel) {
+            let categoryIdx: number = objectLabel.categories.indexOf(category)
+            if (categoryIdx == -1) {
+                setAlertSeverity('error')
+                setAlertContent('The category that you are trying to delete is not linked to the current label!')
+            } else {
+                deleteRequest('category/' + category, objectLabel._id).then(data => {
+                    if (data) {
+                        objectLabel.categories.splice(categoryIdx, 1);
+                        dispatch(setObjectLabel(objectLabel));
+                    } else {
+                        setAlertSeverity('error')
+                        setAlertContent('Error while deleting the category in the database!')
+                    }
+                })
+            }
+        }
     }
 
-    const removeCategoryFromLabel = async () => {
+    const removeCategoryFromLabel = (categoryIdx: number) => {
+        let categories: string[] = [...selectedCategories.slice(0, categoryIdx),
+            ...selectedCategories.slice(categoryIdx + 1)]
+        setSelectedCategories(categories)
+    }
 
+    const addSelectedCategory = (event: SelectChangeEvent) => {
+        let categ: string = event.target.value
+        setCategory(categ)
+        setSelectedCategories([...selectedCategories, categ])
+    }
+
+    const setSelectedCategory = (event: SelectChangeEvent) => {
+        setCategory(event.target.value as string)
     }
 
     useEffect(() => {
@@ -129,18 +206,23 @@ const LabelSelect: FC<LabelSelectProps> = ({
         }
     }, []);
 
-    // TODO: if label was found with autocomplete, then optionally allow to add further categories to the label.
-    //   if the label is new, it should be required for the user to select at least one category.
+    // TODO: make the category select also a autocomplete box that allows adding new categories
 
     return (
         <>
             <Typography sx={{mb: 0.5, pt: 1}}>{labelCaption}</Typography>
             <Box sx={{display: 'flex', mb: 1}}>
                 <Autocomplete
-                    options={queriedLabels} open={labelValue.length > 2} sx={{width: "80%"}}
+                    freeSolo
+                    onChange={(e, value) =>
+                        searchLabels(e, value).then(result => fetchLabelCategories(result))
+                    }
+                    options={queriedLabels} open={labelValue.length > 2} sx={{width: "70%"}}
                     renderInput={(params) =>
                         <TextField {...params} label="Input a label"
-                                   onChange={(e) => searchLabels(e)}
+                                   onChange={(e) =>
+                                       searchLabels(e).then(result => fetchLabelCategories(result))
+                                   }
                                    value={labelValue}
                                    sx={{
                                        "& .MuiOutlinedInput-notchedOutline": {
@@ -149,34 +231,44 @@ const LabelSelect: FC<LabelSelectProps> = ({
                                    }}/>}
                 />
                 <Button
-                    disabled={!newBbox || labelValue.length < 3 || selectedCategories.length == 0}
-                    sx={{width: "20%"}} onClick={makeNewObject ? handleInsertObject : handleUpdateLabel}>
+                    disabled={makeNewObject ? !newBbox || labelValue.length < 3 || selectedCategories.length == 0 :
+                        labelValue.length < 3 && selectedCategories.length == 0}
+                    sx={{width: "30%"}} onClick={makeNewObject ? handleInsertObject : handleUpdateLabel}>
                     {labelButtonText}
                 </Button>
             </Box>
+            <Typography sx={{mb: 0.5}}>{categoriesDescriptor}</Typography>
             <Box sx={{display: 'flex', mb: 0.5}}>
-                <Typography sx={{pr: 1, my: 'auto'}}>{categoriesDescriptor}</Typography>
+                <Typography sx={{pr: 1, my: 'auto'}}>Add Category: </Typography>
                 <Select label="Category" disabled={!categoryList || categoryList.length == 0} sx={{flexGrow: 80}}
-                        onChange={(event: SelectChangeEvent) => {
-                            setSelectedCategories([...selectedCategories, event.target.value as string])
-                        }}>
-                    {categoryList?.map(category =>
-                        <MenuItem value={category}>
-                            {category.charAt(0).toUpperCase() + category.slice(1).toLowerCase()}
+                        onChange={makeNewObject ? addSelectedCategory : setSelectedCategory}
+                        value={category}>
+                    {categoryList?.map(categ =>
+                        <MenuItem key={'select-' + categ} value={categ}>
+                            {categ.charAt(0).toUpperCase() + categ.slice(1).toLowerCase()}
                         </MenuItem>)}
                 </Select>
+                <Button disabled={false} sx={{width: "30%"}}>
+                    {categoryButtonText}
+                </Button>
             </Box>
             <Typography sx={{mb: 0.5, pt: 1}}>{categoriesCaption}</Typography>
-            <Box sx={{display: 'flex', mb: 2}}>
+            <Box sx={{display: 'flex', mb: 2, border: '1px solid #080808', minHeight: 30, p: 1}}>
                 {makeNewObject ?
-                    selectedCategories.map((category, index) =>
-                        <Chip key={'categ' + index} label={<b>{category}</b>} color='primary'
-                              sx={{textShadow: '0px 0.5px 0px black', fontSize: '15px'}}
-                              onDelete={removeCategoryFromLabel}/>) :
+                    <>
+                        {assignedCategories.map((category, index) =>
+                            <Chip key={'categ' + index} label={<b>{category}</b>}
+                                  sx={{textShadow: '0px 0.5px 0px black', fontSize: '15px', bgcolor: '#672400'}}
+                                  onDelete={() => deleteCategory(category)}/>)}
+                        {selectedCategories.map((category, index) =>
+                            <Chip key={'newCateg' + index} label={<b>{category}</b>} color='primary'
+                                  sx={{textShadow: '0px 0.5px 0px black', fontSize: '15px'}}
+                                  onDelete={() => removeCategoryFromLabel(index)}/>)}
+                    </> :
                     objectLabel && objectLabel.categories.map((category, index) =>
                         <Chip key={'categ' + index} label={<b>{category}</b>} color='primary'
                               sx={{textShadow: '0px 0.5px 0px black', fontSize: '15px'}}
-                              onDelete={deleteCategory}/>)}
+                              onDelete={() => deleteCategory(category)}/>)}
             </Box>
         </>
     )

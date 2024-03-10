@@ -59,8 +59,9 @@ const NewObjectControlPanel: FC<NewObjectControlProps> = ({resetZoomCallback}) =
             <Typography sx={{mb: 1, color: 'text.secondary'}} variant='h5'>Create new Object"</Typography>
             <Divider sx={{my: 1}}/>
             <LabelSelect labelCaption="Select Object Label and Categories" labelButtonText='Insert Object'
-                         categoriesDescriptor='Add Categories: ' makeNewObject={true}
-                         categoriesCaption='Currently selected Label Categories (min. 1 category required):'
+                         categoriesDescriptor='Choose for Categories for this Object Label: ' categoryButtonText='Add'
+                         makeNewObject={true}
+                         categoriesCaption='Currently assigned Label Categories (min. 1 category required):'
                          setAlertContent={setAlertContent} setAlertSeverity={setAlertSeverity}/>
             <Divider sx={{my: 1}}/>
             <ButtonGroup sx={{width: '100%', bottom: 5}}>

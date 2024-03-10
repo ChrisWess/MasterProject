@@ -37,8 +37,8 @@ const ProjectMainPage: FC = () => {
 
     const [thumbnails, setThumbnails] = useState<string[][]>();
     const [pageText, setPageText] = useState<string>(page.toString());
-    const [newDocName, setNewDocName] = useState<string>();
-    const [selectedDoc, setSelectedDoc] = useState<string>();
+    const [newDocName, setNewDocName] = useState<string>('');
+    const [selectedDoc, setSelectedDoc] = useState<string>('');
     const [renameAction, setRenameAction] = useState<Function>();
     const [removeDocAction, setRemoveDocAction] = useState<Function>();
     const thumbnailBox = useRef(null);
@@ -153,7 +153,7 @@ const ProjectMainPage: FC = () => {
                             toNextPage={toNextPage}/>
             </Box>
 
-            <Dialog open={selectedDoc !== undefined && renameAction !== undefined}
+            <Dialog open={selectedDoc.length > 0 && renameAction !== undefined}
                     onClose={handleRenameDiagClose}>
                 <DialogTitle sx={{color: 'primary'}}>Rename Document {selectedDoc}</DialogTitle>
                 <DialogContent>
@@ -173,7 +173,7 @@ const ProjectMainPage: FC = () => {
                 </DialogContent>
                 <DialogActions>
                     <Button variant="contained" color="primary" sx={{marginRight: '60%'}}
-                            disabled={newDocName?.trim().length == 0}
+                            disabled={newDocName.trim().length == 0}
                             onClick={() => {
                                 if (renameAction) {
                                     renameAction(newDocName);
@@ -184,7 +184,7 @@ const ProjectMainPage: FC = () => {
                 </DialogActions>
             </Dialog>
 
-            <Dialog open={selectedDoc !== undefined && removeDocAction !== undefined}
+            <Dialog open={selectedDoc.length > 0 && removeDocAction !== undefined}
                     onClose={handleRemoveDiagClose}>
                 <DialogTitle sx={{color: 'red'}}></DialogTitle>
                 <DialogContent>

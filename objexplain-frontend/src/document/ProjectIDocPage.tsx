@@ -57,7 +57,7 @@ export const loadDocImage = async (docId: string) => {
 }
 
 const ProjectIDocPage: FC = () => {
-    const {projectName} = useParams();
+    const {projectName, docId} = useParams();
     const context: any = useOutletContext();
     const idoc: any = useLoaderData();
     const imgContainer = useRef<HTMLDivElement>(null);
@@ -216,11 +216,11 @@ const ProjectIDocPage: FC = () => {
     }, [projectName]);
 
     useEffect(() => {
-        if (doc && project) {
+        if (doc && project && !imgUrl) {
             loadDocImage(doc._id).then(file => {
                 if (file) {
                     dispatch(setTitle(doc.name));
-                    dispatch(initVisibleObjs(doc.objects ? doc.objects.length : 0));
+                    doc.objects && dispatch(initVisibleObjs(doc.objects.length));
                     dispatch(setImgUrl(file));
                     window.history.replaceState(null, '',
                         `/project/${encodeURIComponent(project.title)}/idoc/${doc._id}`)
@@ -229,7 +229,7 @@ const ProjectIDocPage: FC = () => {
                 }
             });
         }
-    }, [doc, project]);
+    }, [doc, project, imgUrl]);
 
     useEffect(() => {
         context.setControlPanel(<DocControlPanel/>);

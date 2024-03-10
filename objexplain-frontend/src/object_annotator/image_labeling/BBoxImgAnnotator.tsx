@@ -48,9 +48,9 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({
 
     let pixelHeight = Math.max(500, height)
     let imgHeight = Math.max(500, height - (height / 10))
-    // let borderRatio = (pixelHeight / imgHeight - 1) * 50 + '%'
     let borderDistHeight = (pixelHeight - imgHeight) / 2
     let ratio = idoc.width / idoc.height
+    let pixelWidth = pixelHeight * ratio
     let borderDistWidth: number = ratio * borderDistHeight
 
     // drag handling
@@ -115,6 +115,9 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({
         // only open the code selector if the rect is big enough
         if (width > 10 && height > 10) {
             const boundingBox = myRect.node()!.getBoundingClientRect();
+            // TODO: map screen coordinates to the original image pixels
+            //  x: idoc.height * (x / pixelHeight)
+            //  y: idoc.width * (y / pixelWidth)
             const bbox_repr = {
                 tlx: boundingBox.left, tly: boundingBox.top,
                 brx: boundingBox.left + boundingBox.width,
@@ -170,10 +173,10 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({
             ref={svgRef}
             width="100%"
             height={pixelHeight + 'px'}
-            style={{cursor: isMoveImg ? "move" : "auto"}}
+            style={{cursor: isMoveImg ? "auto" : "move"}}
         >
             <g ref={gZoomRef}>
-                <g ref={gDragRef} style={{cursor: isMoveImg ? "move" : "crosshair"}}>
+                <g ref={gDragRef} style={{cursor: isMoveImg ? "crosshair" : "move"}}>
                     <image ref={imgRef} href={imgUrl} style={{outline: "1px solid black", height: imgHeight + 'px'}}
                            x={borderDistWidth} y={borderDistHeight}/>
                     <rect
