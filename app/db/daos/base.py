@@ -1220,17 +1220,17 @@ class BaseDAO(AbstractDAO):
                 self.clear_query()
                 self.clear_update()
                 return None
-            result = {'at': {}, 'updated_to': {}}
+            result = {'at': {}, 'updatedTo': {}}
             if generate_response:
                 for qfield, qval in query.items():
                     result['at'][qfield] = str(qval)
                 for updop, updvals in upd_cmd.items():
-                    upd_res_field = result['updated_to'][updop] = {}
+                    upd_res_field = result['updatedTo'][updop] = {}
                     for updfield, val in updvals.items():
                         upd_res_field[updfield] = str(val)
             else:
                 result['at'] = deepcopy(query)
-                result['updated_to'] = deepcopy(upd_cmd)
+                result['updatedTo'] = deepcopy(upd_cmd)
         if notify_stats:
             self._invalidate_stats(query, db_session)
         self.clear_query()

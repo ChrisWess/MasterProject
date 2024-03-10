@@ -1,31 +1,35 @@
 import {createSlice, PayloadAction} from "@reduxjs/toolkit";
 
+type Bbox = { tlx: number; tly: number; brx: number; bry: number };
+
 interface NewObjectPageState {
-    isZooming: boolean;
-    zoomResetter: Function | undefined;
+    isMoveImg: boolean;
+    newBbox: Bbox | undefined;
 }
 
 const initialState: NewObjectPageState = {
-    isZooming: true,
-    zoomResetter: undefined,
+    isMoveImg: true,
+    newBbox: undefined,
 };
 
 export const newObjectPageSlice = createSlice({
     name: "newObj",
     initialState,
     reducers: {
-        switchZooming: (state) => {
-            state.isZooming = !state.isZooming;
+        toggleMovable: (state) => {
+            state.isMoveImg = !state.isMoveImg;
         },
-        setZoomResetter: (state, action: PayloadAction<Function>) => {
-            state.zoomResetter = action.payload;
+        setBbox: (state, action: PayloadAction<Bbox>) => {
+            state.newBbox = action.payload;
+        },
+        clearBbox: (state) => {
+            state.newBbox = undefined;
         },
     }
 });
 
-// actions
 export const {
-    switchZooming, setZoomResetter,
+    toggleMovable, setBbox, clearBbox
 } = newObjectPageSlice.actions;
 
 export default newObjectPageSlice.reducer;

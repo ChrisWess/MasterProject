@@ -1,6 +1,6 @@
-import {ChangeEvent, FC, useEffect, useMemo, useState} from "react";
+import {FC, useEffect, useMemo, useState} from "react";
 import Box from "@mui/material/Box";
-import {Autocomplete, Button, Chip, Divider, IconButton, List, ListItem, TextField} from "@mui/material";
+import {Divider, IconButton, List, ListItem} from "@mui/material";
 import ArrowLeftIcon from '@mui/icons-material/ArrowLeft';
 import ArrowDropUpIcon from '@mui/icons-material/ArrowDropUp';
 import {useDispatch, useSelector} from "react-redux";
@@ -10,9 +10,10 @@ import AlertMessage from "../components/AlertMessage";
 import {useNavigate} from "react-router-dom";
 import {ImageDocument} from "../api/models/imgdoc";
 import {Label} from "../api/models/label";
-import {getRequest, postRequest, putRequest} from "../api/requests";
-import {resetLabelMap} from "../reducers/idocSlice";
 import ListItemText from "@mui/material/ListItemText";
+import LabelSelect from "./LabelSelector";
+import {clearObject, setObjectLabel} from "../reducers/objectSlice";
+import {clearDoc, disableAnnoMode} from "../reducers/idocSlice";
 
 
 export const getMappedLabel = (labelsMap: [string, Label][], labelId: string) => {
@@ -28,9 +29,6 @@ export const getMappedLabel = (labelsMap: [string, Label][], labelId: string) =>
 const ObjectControlPanel: FC = () => {
     const [alertContent, setAlertContent] = useState<string>();
     const [alertSeverity, setAlertSeverity] = useState<string>();
-    const [objectLabel, setObjectLabel] = useState<Label>();
-    const [labelUpdValue, setLabelUpdValue] = useState<string>('');
-    const [queriedLabels, setQueriedLabels] = useState<any[]>([]);
 
     const navigate = useNavigate();
     const dispatch = useDispatch();
@@ -39,42 +37,7 @@ const ObjectControlPanel: FC = () => {
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
     const labelsMap: [string, Label][] | undefined = useSelector((state: any) => state.iDoc.labelMap);
     const objIdx: number | undefined = useSelector((state: any) => state.object.objIdx);
-
-    const searchLabels = async (event: ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
-        event.preventDefault()
-        let input = event.target.value
-        if (input.length > 2) {
-            input = input.charAt(0).toUpperCase() + input.slice(1).toLowerCase();
-            let data = await getRequest('label/search', undefined, {query: input})
-            if (data) {
-                let result = data.result
-                setQueriedLabels(result.map((value: [string, string]) => {
-                    return {id: value[0], label: value[1]}
-                }));
-            }
-        } else {
-            setQueriedLabels([]);
-        }
-        setLabelUpdValue(input);
-    }
-
-    const handleUpdateLabel = async () => {
-        if (labelUpdValue && idoc?.objects && objIdx !== undefined) {
-            let data = undefined;
-            let objId = idoc.objects[objIdx]._id;
-            let valueIdx = queriedLabels.findIndex(value => value.label === labelUpdValue);
-            if (valueIdx === -1) {
-                data = await postRequest('object/label/new', {objectId: objId, label: labelUpdValue})
-            } else {
-                let newLabelId = queriedLabels[valueIdx].id;
-                data = await putRequest('object/label', {objectId: objId, labelId: newLabelId})
-            }
-            if (data) {
-                setLabelUpdValue('')
-                dispatch(resetLabelMap())
-            }
-        }
-    }
+    const objectLabel: Label | undefined = useSelector((state: any) => state.object.objectLabel);
 
     const annoList = useMemo(() => {
         let objs = idoc?.objects;
@@ -96,12 +59,16 @@ const ObjectControlPanel: FC = () => {
 
     const toProjectView = () => {
         if (project) {
+            dispatch(clearObject())
+            dispatch(clearDoc())
+            dispatch(disableAnnoMode())
             navigate('/project/' + encodeURIComponent(project.title))
         }
     }
 
     const toImageView = () => {
         if (project && idoc) {
+            dispatch(clearObject())
             navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}`)
         }
     }
@@ -109,7 +76,7 @@ const ObjectControlPanel: FC = () => {
     useEffect(() => {
         if (idoc && idoc.objects && objIdx != undefined && labelsMap) {
             let mappedLabel = getMappedLabel(labelsMap, idoc.objects[objIdx].labelId);
-            setObjectLabel(mappedLabel);
+            mappedLabel && dispatch(setObjectLabel(mappedLabel));
         }
     }, [idoc, objIdx, labelsMap]);
 
@@ -124,33 +91,10 @@ const ObjectControlPanel: FC = () => {
             <Typography sx={{mb: 1, color: 'text.secondary'}} variant='h5'>Object Label
                 "{objectLabel?.name}"</Typography>
             <Divider sx={{my: 1}}/>
-            <Typography sx={{mb: 0.5, pt: 1}}>Update Object Label</Typography>
-            <Box sx={{display: 'flex'}}>
-                <Autocomplete
-                    options={queriedLabels}
-                    open={labelUpdValue.length > 2}
-                    sx={{width: "100%"}}
-                    renderInput={(params) =>
-                        <TextField {...params} label="Input a label"
-                                   onChange={(e) => searchLabels(e)}
-                                   value={labelUpdValue}
-                                   sx={{
-                                       "& .MuiOutlinedInput-notchedOutline": {
-                                           borderColor: "#9090C0",
-                                       }
-                                   }}/>}
-                />
-                <Button disabled={labelUpdValue.length < 3}
-                        onClick={handleUpdateLabel}>Update</Button>
-            </Box>
-            <Typography sx={{mb: 0.5, pt: 1}}>Categories</Typography>
-            <Box sx={{display: 'flex', mb: 2}}>
-                {objectLabel && objectLabel.categories.map((category, index) =>
-                    <Chip key={'categ' + index} label={<b>{category}</b>} color='primary'
-                          sx={{textShadow: '0px 0.5px 0px black', fontSize: '15px'}}
-                          onDelete={() => {
-                          }}/>)}
-            </Box>
+            <LabelSelect labelCaption="Update Object Label" labelButtonText='Update'
+                         categoriesCaption='Categories of the Label'
+                         categoriesDescriptor='Add further Categories: ' makeNewObject={false}
+                         setAlertContent={setAlertContent} setAlertSeverity={setAlertSeverity}/>
             <Divider/>
             {!!annoList && annoList}
             <AlertMessage content={alertContent} setContent={setAlertContent} severity={alertSeverity}

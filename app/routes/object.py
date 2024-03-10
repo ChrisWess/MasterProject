@@ -92,9 +92,9 @@ def add_detected_object():
         application.logger.error(err_msg)
         abort(400, err_msg)
     # checks for "label" or "labelId" and bbox values "bboxTlx", "bboxTly", "bboxBrx", "bboxBry"
-    doc_id, label_id, bbox = ObjectDAO.retrieve_insert_args(request.json)
+    doc_id, label_info, bbox = ObjectDAO.retrieve_insert_args(request.json, label_projection='_id')
     try:
-        response = ObjectDAO().add(doc_id, label_id, bbox, generate_response=True)
+        response = ObjectDAO().add(doc_id, label_info, bbox, generate_response=True)
         application.logger.info("Detected object inserted: " + response['result'])
         return response
     except InvalidId:
@@ -116,7 +116,7 @@ def add_annotated_object():
         annotations = args['annotations']
         if isinstance(annotations, str):
             annotations = loads(annotations)
-    doc_id, label_info, bbox = ObjectDAO.retrieve_insert_args(request.json)
+    doc_id, label_info, bbox = ObjectDAO.retrieve_insert_args(request.json, label_projection='_id')
     try:
         response = ObjectDAO().add(doc_id, label_info, bbox, annotations, generate_response=True)
         application.logger.info("Detected object inserted: " + response['result'])

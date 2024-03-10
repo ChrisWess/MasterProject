@@ -1,5 +1,6 @@
 from datetime import datetime
 from io import BytesIO
+from math import ceil
 
 from PIL import Image
 from bson.errors import InvalidId
@@ -79,8 +80,16 @@ class ObjectDAO(JoinableDAO):
                 err_msg = "The label ID you provided is not a valid ID!"
                 application.logger.error(err_msg)
                 abort(404, err_msg)
+        elif "labelName" in json_args and (('category' in json_args) != ('categories' in json_args)):
+            categories = json_args.get('category', json_args['categories'])
+            label = LabelDAO().find_or_add(json_args["labelName"], categories, projection=label_projection)
+            if label is None:
+                err_msg = 'Provide at least one basic category for the new label.'
+                application.logger.error(err_msg)
+                abort(400, err_msg)
         else:
-            err_msg = 'You must provide a key-value pair with key "label" or "labelId"!'
+            err_msg = ('You must provide a key-value pair with key "label" or "labelId" or'
+                       ' add a new label by providing the "labelName" and "category" / "categories"!')
             application.logger.error(err_msg)
             abort(400, err_msg)
         if not ObjectDAO.bbox_alias_mapping.keys() <= json_args.keys():
@@ -88,7 +97,8 @@ class ObjectDAO(JoinableDAO):
                        'keys "bboxTlx", "bboxTly", "bboxBrx" and "bboxBry"!')
             application.logger.error(err_msg)
             abort(400, err_msg)
-        bbox = (json_args["bboxTlx"], json_args["bboxTly"], json_args["bboxBrx"], json_args["bboxBry"])
+        bbox = (ceil(json_args["bboxTlx"]), ceil(json_args["bboxTly"]),
+                int(json_args["bboxBrx"]), int(json_args["bboxBry"]))
         if isinstance(label_projection, str):
             label = label[label_projection]
         elif len(label_projection) == 1:

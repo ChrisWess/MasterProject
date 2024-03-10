@@ -1,20 +1,25 @@
 import * as d3 from "d3";
-import {FC, useCallback, useEffect, useMemo, useRef, useState} from "react";
+import {ZoomBehavior} from "d3";
+import {FC, RefObject, useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {useDispatch, useSelector} from "react-redux";
 import BoundingBox from "./BBox";
 import BBoxText from "./BBoxText";
 import {DetectedObject} from "../../api/models/object";
 import {getMappedLabel} from "../ObjectControl";
-import {setZoomResetter} from "../../reducers/objectCreateSlice";
 import {ImageDocument} from "../../api/models/imgdoc";
+import {setBbox} from "../../reducers/objectCreateSlice";
 
 interface ImageAnnotatorProps {
+    svgRef: RefObject<SVGSVGElement>;
+    zoom: ZoomBehavior<SVGSVGElement, unknown>;
     idoc: ImageDocument;
     height: number;
 }
 
-const ImageAnnotator: FC<ImageAnnotatorProps> = ({idoc, height}) => {
-    const svgRef = useRef<SVGSVGElement>(null);
+const ImageAnnotator: FC<ImageAnnotatorProps> = ({
+                                                     svgRef, zoom,
+                                                     idoc, height
+                                                 }) => {
     const gZoomRef = useRef<SVGGElement>(null);
     const gDragRef = useRef<SVGGElement>(null);
     const rectRef = useRef<SVGRectElement>(null);
@@ -24,21 +29,29 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({idoc, height}) => {
     const dispatch = useDispatch();
     const labelsMap = useSelector((state: any) => state.iDoc.labelMap);
     const imgUrl: string | undefined = useSelector((state: any) => state.iDoc.imgUrl);
-    const isZooming: boolean = useSelector((state: any) => state.newObj.isZooming);
+    const isMoveImg: boolean = useSelector((state: any) => state.newObj.isMoveImg);
 
     const [selectedBbox, setSelectedBbox] = useState<DetectedObject | null>(null);
 
     const handleRightClick = useCallback((event: any, obj: DetectedObject) => {
             event.preventDefault();
             const rect = event.target.getBoundingClientRect();
-            const position = {
-                left: rect.left,
-                top: rect.top + rect.height,
+            const bbox_repr = {
+                tlx: rect.left, tly: rect.top,
+                brx: rect.left + rect.width,
+                bry: rect.top + rect.height,
             };
-            // TODO: take position
+            // TODO: dispatch
             setSelectedBbox(obj);
         }, [],
     );
+
+    let pixelHeight = Math.max(500, height)
+    let imgHeight = Math.max(500, height - (height / 10))
+    // let borderRatio = (pixelHeight / imgHeight - 1) * 50 + '%'
+    let borderDistHeight = (pixelHeight - imgHeight) / 2
+    let ratio = idoc.width / idoc.height
+    let borderDistWidth: number = ratio * borderDistHeight
 
     // drag handling
     const drag = useMemo(() => d3.drag<SVGGElement, unknown>(), []);
@@ -62,32 +75,34 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({idoc, height}) => {
         const myRect = d3.select(rectRef.current);
         const myImage = d3.select(imgRef.current).node()!.getBBox();
 
-        const x = parseInt(myRect.attr("xOrigin"));
-        const y = parseInt(myRect.attr("yOrigin"));
-        const w = Math.abs(event.x - x);
-        const h = Math.abs(event.y - y);
+        const curr_x = Math.max(event.x, borderDistWidth);
+        const curr_y = Math.max(event.y, borderDistHeight);
+        const orig_x = parseInt(myRect.attr("xOrigin"));
+        const orig_y = parseInt(myRect.attr("yOrigin"));
+        const w = Math.abs(curr_x - orig_x);
+        const h = Math.abs(curr_y - orig_y);
 
-        if (event.x < x && event.y < y) {
+        if (curr_x < orig_x && curr_y < orig_y) {
             myRect
-                .attr("y", Math.max(0, y - h))
-                .attr("x", Math.max(0, x - w))
-                .attr("width", Math.min(w, x))
-                .attr("height", Math.min(h, y));
-        } else if (event.x < x) {
-            const maxHeight = myImage.height - y;
+                .attr("y", orig_y - h)
+                .attr("x", orig_x - w)
+                .attr("width", w)
+                .attr("height", h);
+        } else if (curr_x < orig_x) {
+            const maxHeight = myImage.height - orig_y + borderDistHeight;
             myRect
-                .attr("x", Math.max(0, x - w))
-                .attr("width", Math.min(w, x))
+                .attr("x", orig_x - w)
+                .attr("width", w)
                 .attr("height", Math.min(h, maxHeight));
-        } else if (event.y < y) {
-            const maxWidth = myImage.width - x;
+        } else if (curr_y < orig_y) {
+            const maxWidth = myImage.width - orig_x + borderDistWidth;
             myRect
                 .attr("width", Math.min(w, maxWidth))
-                .attr("y", Math.max(0, y - h))
-                .attr("height", Math.min(h, y));
+                .attr("y", orig_y - h)
+                .attr("height", h);
         } else {
-            const maxWidth = myImage.width - x;
-            const maxHeight = myImage.height - y;
+            const maxWidth = myImage.width - orig_x + borderDistWidth;
+            const maxHeight = myImage.height - orig_y + borderDistHeight;
             myRect.attr("width", Math.min(w, maxWidth)).attr("height", Math.min(h, maxHeight));
         }
     };
@@ -100,10 +115,12 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({idoc, height}) => {
         // only open the code selector if the rect is big enough
         if (width > 10 && height > 10) {
             const boundingBox = myRect.node()!.getBoundingClientRect();
-            const position = {
-                left: boundingBox.left,
-                top: boundingBox.top + boundingBox.height,
+            const bbox_repr = {
+                tlx: boundingBox.left, tly: boundingBox.top,
+                brx: boundingBox.left + boundingBox.width,
+                bry: boundingBox.top + boundingBox.height,
             };
+            dispatch(setBbox(bbox_repr))
             // TODO: get bounding box position and dimensions and save in state.
             //   On Button Click in NewObjectControl Panel (after label & categories are defined),
             //   fire an object insert into IDoc with collected data. Make Bounding Box half transparent
@@ -119,10 +136,6 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({idoc, height}) => {
         myRect.attr("width", 0).attr("height", 0);
     };
 
-    // main zoom element
-    const zoom = useMemo(() =>
-        d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.5, 5]), []);
-
     const handleZoom = useCallback((e: d3.D3ZoomEvent<any, any>) => {
         d3.select(gZoomRef.current).attr("transform", e.transform.toString());
     }, []);
@@ -131,7 +144,7 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({idoc, height}) => {
         const svg = d3.select<SVGSVGElement, unknown>(svgRef.current!);
         const gDrag = d3.select<SVGGElement, unknown>(gDragRef.current!);
 
-        if (!isZooming) {
+        if (isMoveImg) {
             svg.on(".zoom", null);
 
             drag.on("start", handleDragStart);
@@ -150,41 +163,30 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({idoc, height}) => {
         if (svgRef.current) {
             setupZoom();
         }
-    }, [zoom, svgRef, handleZoom, isZooming]);
-
-    const resetZoom = useCallback(() => {
-        const svg = d3.select<SVGSVGElement, unknown>(svgRef.current!);
-        svg.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
-    }, [zoom, svgRef])
-
-    useEffect(() => {
-        dispatch(setZoomResetter(resetZoom));
-    }, []);
+    }, [zoom, svgRef, handleZoom, isMoveImg]);
 
     return (
         <svg
             ref={svgRef}
             width="100%"
-            height={Math.max(500, height) + "px"}
-            style={{cursor: isZooming ? "move" : "auto"}}
+            height={pixelHeight + 'px'}
+            style={{cursor: isMoveImg ? "move" : "auto"}}
         >
             <g ref={gZoomRef}>
-                <g ref={gDragRef} style={{cursor: isZooming ? "move" : "crosshair"}}>
-                    <image ref={imgRef} href={imgUrl} style={{outline: "1px solid black"}}/>
+                <g ref={gDragRef} style={{cursor: isMoveImg ? "move" : "crosshair"}}>
+                    <image ref={imgRef} href={imgUrl} style={{outline: "1px solid black", height: imgHeight + 'px'}}
+                           x={borderDistWidth} y={borderDistHeight}/>
                     <rect
                         ref={rectRef}
-                        x={0}
-                        y={0}
+                        x={0} y={0} width={0} height={0}
                         stroke={"black"}
                         strokeWidth={3}
                         fill={"transparent"}
-                        width={0}
-                        height={0}
                     ></rect>
                 </g>
                 <g>
                     {idoc.objects?.map((obj: DetectedObject, index: number) => (
-                        <BoundingBox key={'bboxRect' + index} objIdx={index}
+                        <BoundingBox key={'bboxRect' + index} objIdx={index} opacity={0.5}
                                      tlx={obj.tlx} tly={obj.tly} brx={obj.brx} bry={obj.bry}
                                      onContextMenu={(e) => handleRightClick(e, obj)}/>
                     ))}

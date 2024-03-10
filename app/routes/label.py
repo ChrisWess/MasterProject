@@ -89,7 +89,10 @@ def find_labels_by_category(category):
 
 @application.route('/category', methods=['GET'])
 def find_categories():
-    return LabelDAO().find_all_categories(True, generate_response=True)
+    args = request.args
+    if args.get('onlyNames', True):
+        return LabelDAO().category_names(generate_response=True)
+    return LabelDAO().find_all_categories(args.get('expand', False), generate_response=True)
 
 
 @application.route('/label', methods=['POST'])

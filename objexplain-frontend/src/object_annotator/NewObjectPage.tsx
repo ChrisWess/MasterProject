@@ -1,6 +1,8 @@
+import * as d3 from "d3";
+import {ZoomBehavior} from "d3";
 import Box from '@mui/material/Box';
 import {useNavigate, useOutletContext, useParams} from "react-router-dom";
-import {FC, useEffect, useState} from "react";
+import {FC, RefObject, useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {useDispatch, useSelector} from "react-redux";
 import {ProjectStats} from "../api/models/project";
 import {setProject} from "../reducers/mainPageSlice";
@@ -23,6 +25,16 @@ const NewObjectPage: FC = () => {
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
 
     const [imgDoc, setImgDoc] = useState<ImageDocument>();
+    const svgRef: RefObject<SVGSVGElement> = useRef<SVGSVGElement>(null);
+
+    // main zoom element
+    const zoom: ZoomBehavior<SVGSVGElement, unknown> = useMemo(() =>
+        d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.5, 5]), []);
+
+    const resetZoom = useCallback(() => {
+        const svg = d3.select<SVGSVGElement, unknown>(svgRef.current!);
+        svg.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
+    }, [zoom, svgRef])
 
     useEffect(() => {
         if (!projectName) {
@@ -50,12 +62,12 @@ const NewObjectPage: FC = () => {
         } else {
             setImgDoc(idoc);
         }
-        context.setControlPanel(<NewObjectControlPanel/>)
+        context.setControlPanel(<NewObjectControlPanel resetZoomCallback={resetZoom}/>)
     }, []);
 
     return (
         <Box height='100%'>
-            {imgDoc && <ImageAnnotator idoc={imgDoc} height={780}/>}
+            {imgDoc && <ImageAnnotator svgRef={svgRef} zoom={zoom} idoc={imgDoc} height={780}/>}
         </Box>
     )
 }

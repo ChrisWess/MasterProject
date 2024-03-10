@@ -1,6 +1,6 @@
-import {ChangeEvent, FC, useState} from "react";
+import {FC, useState} from "react";
 import Box from "@mui/material/Box";
-import {Autocomplete, Button, ButtonGroup, Divider, IconButton, TextField} from "@mui/material";
+import {Button, ButtonGroup, Divider, IconButton} from "@mui/material";
 import ArrowLeftIcon from '@mui/icons-material/ArrowLeft';
 import ArrowDropUpIcon from '@mui/icons-material/ArrowDropUp';
 import {useDispatch, useSelector} from "react-redux";
@@ -9,70 +9,41 @@ import Typography from "@mui/material/Typography";
 import AlertMessage from "../components/AlertMessage";
 import {useNavigate} from "react-router-dom";
 import {ImageDocument} from "../api/models/imgdoc";
-import {getRequest, postRequest, putRequest} from "../api/requests";
-import {resetLabelMap} from "../reducers/idocSlice";
-import {switchZooming} from "../reducers/objectCreateSlice";
+import {clearBbox, toggleMovable} from "../reducers/objectCreateSlice";
+import LabelSelect from "./LabelSelector";
+import {clearObject} from "../reducers/objectSlice";
+import {clearDoc, disableAnnoMode} from "../reducers/idocSlice";
 
 
-const NewObjectControlPanel: FC = () => {
+interface NewObjectControlProps {
+    resetZoomCallback: Function;
+}
+
+const NewObjectControlPanel: FC<NewObjectControlProps> = ({resetZoomCallback}) => {
     const [alertContent, setAlertContent] = useState<string>();
     const [alertSeverity, setAlertSeverity] = useState<string>();
-    const [labelUpdValue, setLabelUpdValue] = useState<string>('');
-    const [queriedLabels, setQueriedLabels] = useState<any[]>([]);
 
     const navigate = useNavigate();
     const dispatch = useDispatch();
     // global state (redux)
     const project: ProjectStats | undefined = useSelector((state: any) => state.mainPage.currProject);
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
-    const objIdx: number | undefined = useSelector((state: any) => state.object.objIdx);
-    const isZooming: boolean = useSelector((state: any) => state.newObj.isZooming);
-    const resetZoom: Function | undefined = useSelector((state: any) => state.newObj.zoomResetter);
-
-    const searchLabels = async (event: ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
-        event.preventDefault()
-        let input = event.target.value
-        if (input.length > 2) {
-            input = input.charAt(0).toUpperCase() + input.slice(1).toLowerCase();
-            let data = await getRequest('label/search', undefined, {query: input})
-            if (data) {
-                let result = data.result
-                setQueriedLabels(result.map((value: [string, string]) => {
-                    return {id: value[0], label: value[1]}
-                }));
-            }
-        } else {
-            setQueriedLabels([]);
-        }
-        setLabelUpdValue(input);
-    }
-
-    const handleUpdateLabel = async () => {
-        if (labelUpdValue && idoc?.objects && objIdx !== undefined) {
-            let data = undefined;
-            let objId = idoc.objects[objIdx]._id;
-            let valueIdx = queriedLabels.findIndex(value => value.label === labelUpdValue);
-            if (valueIdx === -1) {
-                data = await postRequest('object/label/new', {objectId: objId, label: labelUpdValue})
-            } else {
-                let newLabelId = queriedLabels[valueIdx].id;
-                data = await putRequest('object/label', {objectId: objId, labelId: newLabelId})
-            }
-            if (data) {
-                setLabelUpdValue('')
-                dispatch(resetLabelMap())
-            }
-        }
-    }
+    const isMoveImg: boolean = useSelector((state: any) => state.newObj.isMoveImg);
 
     const toProjectView = () => {
         if (project) {
+            dispatch(clearObject())
+            dispatch(clearBbox())
+            dispatch(clearDoc())
+            dispatch(disableAnnoMode())
             navigate('/project/' + encodeURIComponent(project.title))
         }
     }
 
     const toImageView = () => {
         if (project && idoc) {
+            dispatch(clearObject())
+            dispatch(clearBbox())
             navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}`)
         }
     }
@@ -87,32 +58,18 @@ const NewObjectControlPanel: FC = () => {
             </Box>
             <Typography sx={{mb: 1, color: 'text.secondary'}} variant='h5'>Create new Object"</Typography>
             <Divider sx={{my: 1}}/>
-            <Typography sx={{mb: 0.5, pt: 1}}>Select Object Label and Categories</Typography>
-            <Box sx={{display: 'flex'}}>
-                <Autocomplete
-                    options={queriedLabels}
-                    open={labelUpdValue.length > 2}
-                    sx={{width: "100%"}}
-                    renderInput={(params) =>
-                        <TextField {...params} label="Input a label"
-                                   onChange={(e) => searchLabels(e)}
-                                   value={labelUpdValue}
-                                   sx={{
-                                       "& .MuiOutlinedInput-notchedOutline": {
-                                           borderColor: "#9090C0",
-                                       }
-                                   }}/>}
-                />
-                <Button disabled={labelUpdValue.length < 3}
-                        onClick={handleUpdateLabel}>Update</Button>
-            </Box>
+            <LabelSelect labelCaption="Select Object Label and Categories" labelButtonText='Insert Object'
+                         categoriesDescriptor='Add Categories: ' makeNewObject={true}
+                         categoriesCaption='Currently selected Label Categories (min. 1 category required):'
+                         setAlertContent={setAlertContent} setAlertSeverity={setAlertSeverity}/>
             <Divider sx={{my: 1}}/>
-            <ButtonGroup>
-                <Button onClick={() => dispatch(switchZooming())} variant={isZooming ? "contained" : "outlined"}>
-                    Zoom
+            <ButtonGroup sx={{width: '100%', bottom: 5}}>
+                <Button onClick={() => dispatch(toggleMovable())} variant={isMoveImg ? "contained" : "outlined"}
+                        sx={{flexGrow: 50}}>
+                    Move / Zoom in Image
                 </Button>
-                <Button onClick={() => resetZoom && resetZoom()} variant="outlined" sx={{ml: 2, flexShrink: 0}}>
-                    Reset Zoom
+                <Button onClick={() => resetZoomCallback()} variant="outlined" sx={{ml: 2, flexGrow: 50}}>
+                    Reset Image Position
                 </Button>
             </ButtonGroup>
             <AlertMessage content={alertContent} setContent={setAlertContent} severity={alertSeverity}

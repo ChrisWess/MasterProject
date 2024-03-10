@@ -438,16 +438,18 @@ class LabelDAO(BaseDAO):
         self._query_matcher.clear()
         return self.to_response(result) if generate_response else result
 
-    def category_names(self, db_session=None):
+    def category_names(self, generate_response=False, db_session=None):
         # TODO: this returned list should be presented as a dropdown menu in the frontend.
         #  After choosing a category from dropdown, only labels of that category are presented in
         #  the label-dropdown menu.
         # TODO: Usually sort in the Frontend (always a good idea to outsource as much functionality
         #  to the frontend as possible to relieve the server's utilization)
         self._projection_dict['_id'] = 1
-        result = [doc['_id'] for doc in self._apply_sort_limit(self.categories.find(session=db_session))]
+        result = [doc['_id'] for doc in self._apply_sort_limit(self.categories.find(self._query_matcher,
+                                                                                    self._projection_dict,
+                                                                                    session=db_session))]
         self._projection_dict.clear()
-        return result
+        return {'status': 200, 'result': result, 'numResults': len(result)} if generate_response else result
 
     def _add_label_ref_to_category(self, category, label_idx, db_session=None):
         if type(category) is tuple:

@@ -23,7 +23,14 @@ import AlertMessage from "../components/AlertMessage";
 import {useNavigate} from "react-router-dom";
 import {ImageDocument} from "../api/models/imgdoc";
 import {setTitle} from "../reducers/appBarSlice";
-import {setDoc, setLabelMap, switchObjectsVisible, switchObjVisible} from "../reducers/idocSlice";
+import {
+    clearDoc,
+    disableAnnoMode,
+    setDoc,
+    setLabelMap,
+    switchObjectsVisible,
+    switchObjVisible
+} from "../reducers/idocSlice";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -84,6 +91,8 @@ const DocControlPanel: FC = () => {
 
     const toProjectView = () => {
         if (project) {
+            dispatch(clearDoc())
+            dispatch(disableAnnoMode())
             navigate('/project/' + encodeURIComponent(project.title))
         }
     }
