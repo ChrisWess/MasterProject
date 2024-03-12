@@ -106,6 +106,24 @@ def delete_category_from_label(category, label_id):
         abort(404, err_msg)
 
 
+@application.route('/label/categories', methods=['PUT'])
+def add_categories_to_label():
+    args = request.json
+    try:
+        label_id = ObjectId(args['labelId'])
+        label = LabelDAO().add_categories_to_label(label_id, args['categories'], generate_response=True)
+        if label is None:
+            err_msg = "No label with the given ID could be found!"
+            application.logger.error(err_msg)
+            abort(404, err_msg)
+        else:
+            return label
+    except InvalidId:
+        err_msg = "The Label ID you provided is not a valid ID!"
+        application.logger.error(err_msg)
+        abort(404, err_msg)
+
+
 @application.route('/label', methods=['POST'])
 def create_label():
     try:

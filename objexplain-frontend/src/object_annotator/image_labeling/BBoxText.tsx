@@ -16,11 +16,11 @@ function BBoxText({text, tlx, tly, brx, bry, onContextMenu, fontSize}: BBoxTextP
         <text
             key={text}
             x={tlx + 3}
-            y={tly - 3}
+            y={tly + fontSize}
             width={brx - tlx}
             height={bry - tly}
             fill={"white"}
-            stroke={"black"}
+            stroke={"gray"}
             strokeWidth={0.75}
             fontSize={`${fontSize}px`}
             onContextMenu={(e) => onContextMenu(e, [tlx, tly, brx, bry])}

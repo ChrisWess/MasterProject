@@ -95,7 +95,9 @@ def add_detected_object():
     doc_id, label_info, bbox = ObjectDAO.retrieve_insert_args(request.json, label_projection='_id')
     try:
         response = ObjectDAO().add(doc_id, label_info, bbox, generate_response=True)
-        application.logger.info("Detected object inserted: " + response['result'])
+        new_id = response['result']
+        application.logger.info("Detected object inserted: " + new_id)
+        response['result'] = {'objId': new_id, 'labelId': str(label_info)}
         return response
     except InvalidId:
         err_msg = "The Image Document ID you provided is not a valid ID!"

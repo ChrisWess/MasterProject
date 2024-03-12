@@ -56,6 +56,7 @@ class DefaultLabelPreprocesser(LabelPreprocesser):
                 else:
                     result.append(token.text)
             if result:
+                # TODO: join hyphens without spaces around it
                 return ' '.join(result), result
             else:
                 return category

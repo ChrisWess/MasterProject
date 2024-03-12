@@ -98,7 +98,7 @@ const ObjectPage: FC = () => {
     }, [idoc, labelsMap]);
 
     useEffect(() => {
-        if (objIdx) {
+        if (objIdx !== undefined) {
             let idx = parseInt(objIdx);
             if (imgUrl && idoc && idoc.objects) {
                 if (idx >= 0 && idx < idoc.objects.length) {

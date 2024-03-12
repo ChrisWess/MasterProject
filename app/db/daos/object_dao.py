@@ -82,7 +82,7 @@ class ObjectDAO(JoinableDAO):
                 abort(404, err_msg)
         elif "labelName" in json_args and (('category' in json_args) != ('categories' in json_args)):
             categories = json_args.get('category', json_args['categories'])
-            label = LabelDAO().find_or_add(json_args["labelName"], categories, projection=label_projection)
+            label = LabelDAO().add(json_args["labelName"], categories)[1]
             if label is None:
                 err_msg = 'Provide at least one basic category for the new label.'
                 application.logger.error(err_msg)

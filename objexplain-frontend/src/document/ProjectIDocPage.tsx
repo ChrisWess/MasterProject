@@ -178,12 +178,16 @@ const ProjectIDocPage: FC = () => {
                 let imgHeight = imgContainer.current.offsetHeight
                 if (imgHeight > 0) {
                     let ratio = imgHeight / doc.height
-                    return objs.filter((_, index) => objsVis && objsVis[index])
-                        .map((obj, index) => {
+                    return objs.map((obj, index) => {
+                        if (objsVis && objsVis[index]) {
                             let color = BBOX_COLORS[index % 10];
                             let label: Label | undefined = getLabel(labelsMap, obj);
                             return <Box key={obj._id} position='absolute' border='solid 5px' borderColor={color}
-                                        sx={{top: ratio * obj.tly - 5, left: ratio * obj.tlx - 5, cursor: 'pointer'}}
+                                        sx={{
+                                            top: ratio * obj.tly - 5,
+                                            left: ratio * obj.tlx - 5,
+                                            cursor: 'pointer'
+                                        }}
                                         width={ratio * (obj.brx - obj.tlx) + 10}
                                         height={ratio * (obj.bry - obj.tly) + 10}
                                         onClick={() => {
@@ -195,7 +199,8 @@ const ProjectIDocPage: FC = () => {
                                     <b color={color}>{!!label ? label.name : obj.labelId}</b>
                                 </Typography>
                             </Box>
-                        });
+                        }
+                    });
                 }
             }
         }
@@ -219,7 +224,6 @@ const ProjectIDocPage: FC = () => {
         if (doc && project && !imgUrl) {
             loadDocImage(doc._id).then(file => {
                 if (file) {
-                    dispatch(setTitle(doc.name));
                     doc.objects && dispatch(initVisibleObjs(doc.objects.length));
                     dispatch(setImgUrl(file));
                     window.history.replaceState(null, '',
@@ -234,6 +238,7 @@ const ProjectIDocPage: FC = () => {
     useEffect(() => {
         context.setControlPanel(<DocControlPanel/>);
         if (idoc) {
+            dispatch(setTitle(idoc.name));
             dispatch(setDoc(idoc))
         } else {
             navigate('/notfound404')

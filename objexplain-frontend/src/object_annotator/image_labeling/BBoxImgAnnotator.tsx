@@ -5,21 +5,16 @@ import {useDispatch, useSelector} from "react-redux";
 import BoundingBox from "./BBox";
 import BBoxText from "./BBoxText";
 import {DetectedObject} from "../../api/models/object";
-import {getMappedLabel} from "../ObjectControl";
 import {ImageDocument} from "../../api/models/imgdoc";
 import {setBbox} from "../../reducers/objectCreateSlice";
 
 interface ImageAnnotatorProps {
     svgRef: RefObject<SVGSVGElement>;
     zoom: ZoomBehavior<SVGSVGElement, unknown>;
-    idoc: ImageDocument;
     height: number;
 }
 
-const ImageAnnotator: FC<ImageAnnotatorProps> = ({
-                                                     svgRef, zoom,
-                                                     idoc, height
-                                                 }) => {
+const ImageAnnotator: FC<ImageAnnotatorProps> = ({svgRef, zoom, height}) => {
     const gZoomRef = useRef<SVGGElement>(null);
     const gDragRef = useRef<SVGGElement>(null);
     const rectRef = useRef<SVGRectElement>(null);
@@ -28,7 +23,9 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({
     // global state (redux)
     const dispatch = useDispatch();
     const labelsMap = useSelector((state: any) => state.iDoc.labelMap);
+    const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
     const imgUrl: string | undefined = useSelector((state: any) => state.iDoc.imgUrl);
+    const showObjs: boolean = useSelector((state: any) => state.newObj.showCurrObjs);
     const isMoveImg: boolean = useSelector((state: any) => state.newObj.isMoveImg);
 
     const [selectedBbox, setSelectedBbox] = useState<DetectedObject | null>(null);
@@ -49,9 +46,11 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({
     let pixelHeight = Math.max(500, height)
     let imgHeight = Math.max(500, height - (height / 10))
     let borderDistHeight = (pixelHeight - imgHeight) / 2
-    let ratio = idoc.width / idoc.height
-    let pixelWidth = pixelHeight * ratio
-    let borderDistWidth: number = ratio * borderDistHeight
+    let imgRatio = idoc ? idoc.width / idoc.height : 0
+    let pixelWidth = pixelHeight * imgRatio
+    let borderDistWidth: number = imgRatio * borderDistHeight
+    let widthRatio = idoc ? idoc.width / (pixelWidth - 2 * borderDistWidth) : 0
+    let heightRatio = idoc ? idoc.height / (pixelHeight - 2 * borderDistHeight) : 0
 
     // drag handling
     const drag = useMemo(() => d3.drag<SVGGElement, unknown>(), []);
@@ -112,23 +111,21 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({
         const width = parseInt(myRect.attr("width"));
         const height = parseInt(myRect.attr("height"));
 
-        // only open the code selector if the rect is big enough
-        if (width > 10 && height > 10) {
-            const boundingBox = myRect.node()!.getBoundingClientRect();
-            // TODO: map screen coordinates to the original image pixels
-            //  x: idoc.height * (x / pixelHeight)
-            //  y: idoc.width * (y / pixelWidth)
+        // only keep the bbox if it is big enough
+        if (idoc && width > 10 && height > 10) {
+            // pixelWidth = 2 * borderDistWidth
+            const left = parseInt(myRect.attr("x")) - borderDistWidth;
+            const top = parseInt(myRect.attr("y")) - borderDistHeight;
+            // map screen coordinates to the original image pixels
+            let mappedLeft = Math.floor(Math.max(0, left * widthRatio));
+            let mappedTop = Math.floor(Math.max(0, top * heightRatio));
+            let mappedRight = Math.ceil(Math.min(idoc.width, mappedLeft + (width * widthRatio)));
+            let mappedBottom = Math.ceil(Math.min(idoc.height, mappedTop + (height * heightRatio)));
             const bbox_repr = {
-                tlx: boundingBox.left, tly: boundingBox.top,
-                brx: boundingBox.left + boundingBox.width,
-                bry: boundingBox.top + boundingBox.height,
+                tlx: mappedLeft, tly: mappedTop,
+                brx: mappedRight, bry: mappedBottom,
             };
             dispatch(setBbox(bbox_repr))
-            // TODO: get bounding box position and dimensions and save in state.
-            //   On Button Click in NewObjectControl Panel (after label & categories are defined),
-            //   fire an object insert into IDoc with collected data. Make Bounding Box half transparent
-            //   after the operation (like the other BBoxs), which is fixed in and read from idoc now.
-            //   When dragging, we draw the next BBox.
         } else {
             resetRect();
         }
@@ -162,6 +159,36 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({
         }
     };
 
+    const getMappedLabel = (labelId: string) => {
+        for (let i = 0; i < labelsMap.length; i++) {
+            if (labelsMap[i][0] === labelId) {
+                return labelsMap[i][1]
+            }
+        }
+        return undefined
+    }
+
+    const bboxs = useMemo(() => {
+        return idoc?.objects?.map((obj: DetectedObject, index: number) => {
+            let tlx = (obj.tlx + borderDistWidth - 7) / widthRatio;
+            let tly = (obj.tly + borderDistHeight - 5) / heightRatio;
+            let brx = (obj.brx + borderDistWidth - 7) / widthRatio;
+            let bry = (obj.bry + borderDistHeight - 5) / heightRatio;
+            return (<g>
+                <BoundingBox key={'bboxRect' + index} objIdx={index} opacity={0.5}
+                             tlx={tlx} tly={tly} brx={brx} bry={bry}
+                             onContextMenu={(e) => handleRightClick(e, obj)}/>
+                <BBoxText
+                    key={'bboxText' + index}
+                    text={labelsMap ? getMappedLabel(obj.labelId)!.name : 'Placeholder'}
+                    tlx={tlx} tly={tly} brx={brx} bry={bry}
+                    onContextMenu={(e) => handleRightClick(e, obj)}
+                    fontSize={Math.max(21, height / 30)}
+                />
+            </g>)
+        })
+    }, [idoc?.objects, showObjs])
+
     useEffect(() => {
         if (svgRef.current) {
             setupZoom();
@@ -187,24 +214,7 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({
                         fill={"transparent"}
                     ></rect>
                 </g>
-                <g>
-                    {idoc.objects?.map((obj: DetectedObject, index: number) => (
-                        <BoundingBox key={'bboxRect' + index} objIdx={index} opacity={0.5}
-                                     tlx={obj.tlx} tly={obj.tly} brx={obj.brx} bry={obj.bry}
-                                     onContextMenu={(e) => handleRightClick(e, obj)}/>
-                    ))}
-                </g>
-                <g>
-                    {idoc.objects?.map((obj: DetectedObject, index: number) => (
-                        <BBoxText
-                            key={'bboxText' + index}
-                            text={getMappedLabel(labelsMap, obj.labelId)!.name}
-                            tlx={obj.tlx} tly={obj.tly} brx={obj.brx} bry={obj.bry}
-                            onContextMenu={(e) => handleRightClick(e, obj)}
-                            fontSize={Math.max(21, height / 17)}
-                        />
-                    ))}
-                </g>
+                {showObjs && bboxs}
             </g>
         </svg>
     );

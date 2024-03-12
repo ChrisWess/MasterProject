@@ -81,6 +81,7 @@ const DocControlPanel: FC = () => {
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
     const labelsMap: [string, Label][] | undefined = useSelector((state: any) => state.iDoc.labelMap);
     const objsVis: boolean[] | undefined = useSelector((state: any) => state.iDoc.objsVis);
+    const showObjs: boolean = useSelector((state: any) => state.iDoc.showObjects);
 
     const deleteObject = (objId: string) => {
         if (idoc && idoc.objects) {
@@ -148,8 +149,8 @@ const DocControlPanel: FC = () => {
                             <IconButton onClick={() => dispatch(switchObjVisible(index))}
                                         sx={{color: 'text.secondary'}}>
                                 {objsVis && objsVis[index] ?
-                                    <VisibilityOutlinedIcon/> :
-                                    <VisibilityOffOutlinedIcon/>}
+                                    <VisibilityOffOutlinedIcon/> :
+                                    <VisibilityOutlinedIcon/>}
                             </IconButton>
                             <IconButton aria-label="comment" onClick={() => deleteObject(obj._id)}>
                                 <DeleteIcon sx={{color: 'text.secondary'}}/>
@@ -199,7 +200,8 @@ const DocControlPanel: FC = () => {
             <Typography sx={{mb: 2, color: 'text.secondary'}} variant='caption'>Last
                 Edit: &nbsp;&nbsp; {idoc?.updatedAt}</Typography>
             <FormGroup row sx={{ml: 1}}>
-                <FormControlLabel control={<Switch defaultChecked onChange={() => dispatch(switchObjectsVisible())}/>}
+                <FormControlLabel control={<Switch defaultChecked={showObjs}
+                                                   onChange={() => dispatch(switchObjectsVisible())}/>}
                                   label="Show Objects" sx={{mr: 6}}/>
             </FormGroup>
             <Divider sx={{my: 1}}/>
