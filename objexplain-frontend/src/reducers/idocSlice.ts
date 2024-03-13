@@ -51,11 +51,11 @@ export const idocSlice = createSlice({
         removeObjectAt: (state, action: PayloadAction<number>) => {
             let currDoc = state.document
             if (currDoc !== undefined && currDoc.objects) {
-                currDoc.objects.splice(action.payload);
+                currDoc.objects.splice(action.payload, 1);
                 state.document = currDoc
                 let newVis = state.objsVis
                 if (newVis) {
-                    newVis.splice(action.payload)
+                    newVis.splice(action.payload, 1)
                     state.objsVis = newVis
                 }
             }
@@ -92,6 +92,13 @@ export const idocSlice = createSlice({
         },
         setLabelMap: (state, action: PayloadAction<[string, Label][]>) => {
             state.labelMap = action.payload;
+        },
+        addLabelMapEntry: (state, action: PayloadAction<[string, Label]>) => {
+            let currMap = state.labelMap;
+            if (currMap) {
+                currMap.push(action.payload);
+                state.labelMap = currMap;
+            }
         },
         resetLabelMap: (state) => {
             state.labelMap = undefined;
@@ -214,7 +221,7 @@ export const {
     clearDoc, removeObjectAt, initVisibleObjs, addVisibleObj,
     setImgUrl, setLabelMap, resetLabelMap, enableAnnoMode,
     disableAnnoMode, nextIdx, prevIdx, loadInNewDocs,
-    loadInOlderDocs,
+    loadInOlderDocs, addLabelMapEntry,
 } = idocSlice.actions;
 
 export default idocSlice.reducer;

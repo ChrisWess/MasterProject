@@ -106,6 +106,22 @@ const DocControlPanel: FC = () => {
         }
     }
 
+    const deleteObjectAtIdx = (objIdx: number) => {
+        if (idoc && idoc.objects && objIdx >= 0 && objIdx < idoc.objects.length) {
+            deleteRequest('object', idoc.objects[objIdx]._id).then(data => {
+                if (data) {
+                    dispatch(removeObjectAt(objIdx));
+                } else {
+                    setAlertSeverity('error')
+                    setAlertContent('Error while deleting the object!')
+                }
+            }).catch(error => {
+                setAlertSeverity('error')
+                setAlertContent(error.message)
+            })
+        }
+    }
+
     const renameImage = async (textInput: string) => {
         if (idoc !== undefined) {
             const data = await putRequest('idoc/rename', {docId: idoc._id, docName: textInput})
@@ -127,6 +143,7 @@ const DocControlPanel: FC = () => {
 
     const objList = useMemo(() => {
         let objs = idoc?.objects;
+        // TODO: error (precondition 3 objs): delete first obj from list => following idxs are removed from list
         if (objs) {
             return (<List className="projects" key="mainList">
                 {objs?.map((obj, index) =>
@@ -152,7 +169,7 @@ const DocControlPanel: FC = () => {
                                     <VisibilityOffOutlinedIcon/> :
                                     <VisibilityOutlinedIcon/>}
                             </IconButton>
-                            <IconButton aria-label="comment" onClick={() => deleteObject(obj._id)}>
+                            <IconButton aria-label="comment" onClick={() => deleteObjectAtIdx(index)}>
                                 <DeleteIcon sx={{color: 'text.secondary'}}/>
                             </IconButton>
                         </ListItemIcon>

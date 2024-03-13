@@ -7,6 +7,7 @@ import BBoxText from "./BBoxText";
 import {DetectedObject} from "../../api/models/object";
 import {ImageDocument} from "../../api/models/imgdoc";
 import {setBbox} from "../../reducers/objectCreateSlice";
+import {Label} from "../../api/models/label";
 
 interface ImageAnnotatorProps {
     svgRef: RefObject<SVGSVGElement>;
@@ -22,7 +23,7 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({svgRef, zoom, height}) => {
 
     // global state (redux)
     const dispatch = useDispatch();
-    const labelsMap = useSelector((state: any) => state.iDoc.labelMap);
+    const labelsMap: [string, Label][] | undefined = useSelector((state: any) => state.iDoc.labelMap);
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
     const imgUrl: string | undefined = useSelector((state: any) => state.iDoc.imgUrl);
     const showObjs: boolean = useSelector((state: any) => state.newObj.showCurrObjs);
@@ -160,9 +161,11 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({svgRef, zoom, height}) => {
     };
 
     const getMappedLabel = (labelId: string) => {
-        for (let i = 0; i < labelsMap.length; i++) {
-            if (labelsMap[i][0] === labelId) {
-                return labelsMap[i][1]
+        if (labelsMap) {
+            for (let i = 0; i < labelsMap.length; i++) {
+                if (labelsMap[i][0] === labelId) {
+                    return labelsMap[i][1]
+                }
             }
         }
         return undefined
@@ -170,24 +173,25 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({svgRef, zoom, height}) => {
 
     const bboxs = useMemo(() => {
         return idoc?.objects?.map((obj: DetectedObject, index: number) => {
-            let tlx = (obj.tlx + borderDistWidth - 7) / widthRatio;
-            let tly = (obj.tly + borderDistHeight - 5) / heightRatio;
-            let brx = (obj.brx + borderDistWidth - 7) / widthRatio;
-            let bry = (obj.bry + borderDistHeight - 5) / heightRatio;
-            return (<g>
-                <BoundingBox key={'bboxRect' + index} objIdx={index} opacity={0.5}
+            let tlx = (obj.tlx + borderDistWidth - 30) / widthRatio;
+            let tly = (obj.tly + borderDistHeight - 20) / heightRatio;
+            let brx = (obj.brx + borderDistWidth - 30) / widthRatio;
+            let bry = (obj.bry + borderDistHeight - 20) / heightRatio;
+            let label = getMappedLabel(obj.labelId);
+            return (<g key={'annoBbox' + index}>
+                <BoundingBox key={'bboxRect' + index} objIdx={index} opacity={0.3}
                              tlx={tlx} tly={tly} brx={brx} bry={bry}
                              onContextMenu={(e) => handleRightClick(e, obj)}/>
                 <BBoxText
                     key={'bboxText' + index}
-                    text={labelsMap ? getMappedLabel(obj.labelId)!.name : 'Placeholder'}
+                    text={labelsMap && label ? label.name : 'Placeholder'}
                     tlx={tlx} tly={tly} brx={brx} bry={bry}
                     onContextMenu={(e) => handleRightClick(e, obj)}
                     fontSize={Math.max(21, height / 30)}
                 />
             </g>)
         })
-    }, [idoc?.objects, showObjs])
+    }, [idoc?.objects, showObjs, labelsMap])
 
     useEffect(() => {
         if (svgRef.current) {

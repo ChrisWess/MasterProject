@@ -65,6 +65,17 @@ const NewObjectControlPanel: FC<NewObjectControlProps> = ({resetZoomCallback}) =
                                   label="Show Objects" sx={{mr: 6}}/>
             </FormGroup>
             <Divider sx={{my: 1}}/>
+            <Typography sx={{mb: 0.5, color: 'primary'}} variant='subtitle1'>Instructions:</Typography>
+            <Typography sx={{mb: 0.2, color: 'primary.light'}} variant='subtitle2'>Drag over the image with your cursor
+                to create a Bounding Box of an object.</Typography>
+            <Typography sx={{mb: 0.2, color: 'primary.light'}} variant='subtitle2'>Write or select a label that best
+                describes the object in your bounding box.</Typography>
+            <Typography sx={{mb: 0.2, color: 'primary.light'}} variant='subtitle2'>If you create a new class label, you
+                must add at least one category for the label, in which the object falls into (e.g. bird, car, ship
+                etc.).</Typography>
+            <Typography sx={{mb: 0.2, color: 'primary.light'}} variant='subtitle2'>Click "Insert Object" to add the
+                object to the image.</Typography>
+            <Divider sx={{my: 1}}/>
             <LabelSelect labelCaption="Select Object Label and Categories" labelButtonText='Insert Object'
                          categoriesDescriptor='Choose for Categories for this Object Label: ' categoryButtonText='Add'
                          projectName={project?.title} makeNewObject

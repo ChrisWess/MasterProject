@@ -3,7 +3,7 @@ import Box from "@mui/material/Box";
 import {Autocomplete, Button, Chip, TextField} from "@mui/material";
 import {useDispatch, useSelector} from "react-redux";
 import {deleteRequest, getRequest, postRequest, putRequest} from "../api/requests";
-import {addVisibleObj, resetLabelMap, setDoc} from "../reducers/idocSlice";
+import {addLabelMapEntry, addVisibleObj, resetLabelMap, setDoc} from "../reducers/idocSlice";
 import Typography from "@mui/material/Typography";
 import {Label} from "../api/models/label";
 import {DetectedObject} from "../api/models/object";
@@ -183,7 +183,13 @@ const LabelSelect: FC<LabelSelectProps> = ({
                 }
                 if (data) {
                     let labelId = data.result.labelId;
-                    fetchLabel(labelId).then(label => label && dispatch(setObjectLabel(label)))
+                    fetchLabel(labelId).then(data => {
+                        if (data) {
+                            let label = data.result
+                            dispatch(setObjectLabel(label))
+                            dispatch(addLabelMapEntry([labelId, label]))
+                        }
+                    })
                     dispatch(addVisibleObj())
                     let now = Date.now().toString()
                     let obj = {
