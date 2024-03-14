@@ -8,7 +8,7 @@ from bson.objectid import ObjectId
 from flask import abort
 from pymongo import ASCENDING
 
-from app import application
+from app import application, fs
 from app.db.daos.annotation_dao import AnnotationDAO
 from app.db.daos.base import JoinableDAO, dao_update
 from app.db.daos.label_dao import LabelDAO
@@ -179,7 +179,7 @@ class ObjectDAO(JoinableDAO):
         self._projection_dict.clear()
         if result is None:
             return None
-        img = result['image']
+        img = fs.get(result['image'], session=db_session).read()
         bboxs = result[self.location]
         for i, bbox in enumerate(bboxs):
             bbox = tuple(bbox[coord] for coord in self.bbox_alias_mapping.values())
@@ -199,7 +199,7 @@ class ObjectDAO(JoinableDAO):
         result = self.find_by_nested_id(obj_id, True, self._projection_dict, db_session=db_session)
         if result is None:
             return None
-        img = result['image']
+        img = fs.get(result['image'], session=db_session).read()
         bbox = result[self.location]
         bbox = tuple(bbox[coord] for coord in self.bbox_alias_mapping.values())
         return self.crop_img_to_obj(img, bbox)

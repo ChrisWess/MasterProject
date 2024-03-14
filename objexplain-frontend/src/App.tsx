@@ -12,6 +12,7 @@ import ProjectIDocPage from "./document/ProjectIDocPage";
 import {loadIDoc} from "./document/DocumentLoader";
 import ObjectPage from "./object_annotator/ObjectPage";
 import NewObjectPage from "./object_annotator/NewObjectPage";
+import AnnotationView from "./annotation_manager/AnnotationView";
 
 
 const router = createBrowserRouter(
@@ -24,6 +25,7 @@ const router = createBrowserRouter(
                 <Route path=":projectName/idoc/:docId" element={<ProjectIDocPage/>} loader={loadIDoc}/>
                 <Route path=":projectName/idoc/:docId/:objIdx" element={<ObjectPage/>}/>
                 <Route path=":projectName/idoc/:docId/newObj" element={<NewObjectPage/>}/>
+                <Route path=":projectName/idoc/:docId/:objIdx/:annoIdx" element={<AnnotationView/>}/>
             </Route>
             <Route path="test" element={<TestPage/>}/>
             <Route path="dashboard" element={<UserDashboard/>}/>

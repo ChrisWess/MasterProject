@@ -1,5 +1,4 @@
 import {createSlice, PayloadAction} from "@reduxjs/toolkit";
-import {VisualFeature} from "../api/models/feature";
 import {DetectedObject} from "../api/models/object";
 import {Label} from "../api/models/label";
 
@@ -7,18 +6,12 @@ interface ObjectPageState {
     objIdx: number | undefined;
     detObj: DetectedObject | undefined;
     objectLabel: Label | undefined;
-    showFeatures: boolean;
-    featuresVis: boolean[] | undefined;
-    features: VisualFeature | undefined;
 }
 
 const initialState: ObjectPageState = {
     objIdx: undefined,
     detObj: undefined,
     objectLabel: undefined,
-    showFeatures: true,
-    featuresVis: undefined,
-    features: undefined,
 };
 
 export const objectPageSlice = createSlice({
@@ -39,28 +32,13 @@ export const objectPageSlice = createSlice({
             state.objectLabel = undefined;
             state.detObj = undefined;
         },
-        switchFeaturesVisible: (state) => {
-            state.showFeatures = !state.showFeatures;
-        },
-        switchFeatVisible: (state, action: PayloadAction<number>) => {
-            let payload = action.payload;
-            if (state.featuresVis && payload >= 0 && payload < state.featuresVis.length) {
-                let prev = state.featuresVis;
-                prev[payload] = !prev[payload];
-                state.featuresVis = prev;
-            }
-        },
-        setFeatures: (state, action: PayloadAction<VisualFeature>) => {
-            state.features = action.payload;
-        },
     }
 });
 
 // actions
 export const {
-    setObjectIdx, switchFeaturesVisible, setObject,
-    setObjectLabel, clearObject, switchFeatVisible,
-    setFeatures,
+    setObjectIdx, setObject, setObjectLabel,
+    clearObject,
 } = objectPageSlice.actions;
 
 export default objectPageSlice.reducer;

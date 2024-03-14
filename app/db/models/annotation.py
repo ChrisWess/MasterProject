@@ -27,8 +27,7 @@ class Annotation(UserCreationModel):
             "_id": ObjectId("6560badba00004fb3359631e"),
             "text": "This is a fox, because it has orange fur.",
             "tokens": ["this", "is", "a", "fox", ",", "because", "it", "has", "orange", "fur"],
-            # If present, label/class tokens get a special value of: - labelIdx - 2
-            "conceptMask": [-1, -1, -1, -2, -1, -1, -1, -1, 0, 0],  # ints >= 0 denote concepts
+            "conceptMask": [-1, -1, -1, -1, -1, -1, -1, -1, 0, 0],  # ints >= 0 denote concepts
             "conceptIds": [ObjectId("65610d601e91b2dff82f93ba")],
             "createdBy": ObjectId("6560badba00004fb3359631f"),
             "createdAt": datetime.now()

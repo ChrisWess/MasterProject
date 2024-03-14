@@ -1,35 +1,29 @@
 import Box from '@mui/material/Box';
 import {useNavigate, useOutletContext, useParams} from "react-router-dom";
-import {getRequest, loadImage} from "../api/requests";
+import {getRequest} from "../api/requests";
 import {FC, useEffect, useMemo, useRef} from "react";
 import {useDispatch, useSelector} from "react-redux";
 import {ProjectStats} from "../api/models/project";
-import {setTitle} from "../reducers/appBarSlice";
-import {setDoc, setImgUrl, setLabelMap} from "../reducers/idocSlice";
+import {setDoc, setImgUrl} from "../reducers/idocSlice";
 import {setProject} from "../reducers/mainPageSlice";
 import {Button, Typography} from "@mui/material";
-import {DetectedObject} from "../api/models/object";
-import {Label} from "../api/models/label";
 import {ImageDocument} from "../api/models/imgdoc";
-import {getLabel} from "../document/ProjectIDocPage";
-import ObjectControlPanel from "../object_annotator/ObjectControl";
-import {mapLabels} from "../document/DocControl";
-import {setFeatures, setObjectIdx} from "../reducers/objectSlice";
+import {loadDocImage, loadProject} from "../document/ProjectIDocPage";
+import {setObject, setObjectIdx} from "../reducers/objectSlice";
+import {Annotation} from "../api/models/annotation";
+import AnnotationControlPanel from "./AnnotationControl";
+import {setAnnotation, setAnnotationIdx, setConceptSubs, setFeatures} from "../reducers/annotationSlice";
+import {CONCEPT_COLORS} from "./FeatureView";
+import {VisualFeature} from "../api/models/feature";
+import {cropImage, loadDoc} from "../object_annotator/ObjectPage";
+import {setTitle} from "../reducers/appBarSlice";
+import {Label} from "../api/models/label";
 
 
-export const CONCEPT_COLORS = [
-    '#9A6324',
-    '#808000',
-    '#469990',
-    '#FFD8B1',
-    '#DCBEFF',
-    '#404040',
-    '#AAFFC3',
-    '#F032E6',
-    '#6495ED',
-    '#228B22',
-]
-
+export const loadVisualFeatures = async (annoId: string) => {
+    // TODO: load features with expanded concept?
+    return await getRequest('visFeature/annotation', annoId)
+}
 
 const AnnotationView: FC = () => {
     const {projectName, docId, objIdx, annoIdx} = useParams();
@@ -43,9 +37,16 @@ const AnnotationView: FC = () => {
     const project: ProjectStats | undefined = useSelector((state: any) => state.mainPage.currProject);
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
     const imgUrl: string | undefined = useSelector((state: any) => state.iDoc.imgUrl);
-    const labelsMap: [string, Label][] | undefined = useSelector((state: any) => state.iDoc.labelMap);
-    const showFeats: boolean = useSelector((state: any) => state.object.showFeatures);
-    const featsVis: boolean[] | undefined = useSelector((state: any) => state.object.featuresVis);
+    const objectLabel: Label | undefined = useSelector((state: any) => state.object.objectLabel);
+    const annotation: Annotation | undefined = useSelector((state: any) => state.annotation.annotation);
+    const featsVis: boolean[] | undefined = useSelector((state: any) => state.annotation.featuresVis);
+    const showFeats: boolean = useSelector((state: any) => state.annotation.showFeatures);
+    const features: VisualFeature[] | undefined = useSelector((state: any) => state.annotation.features);
+    const conceptSubs: string[] | undefined = useSelector((state: any) => state.annotation.conceptSubstrings);
+
+    let objIntIdx = objIdx ? parseInt(objIdx) : undefined;
+    let objId = idoc?.objects && objIntIdx !== undefined ? idoc.objects[objIntIdx]._id : undefined
+    let annoIntIdx = annoIdx ? parseInt(annoIdx) : undefined;
 
     /**
      * The concepts in the annotation are marked with the same color as the bounding boxes of the
@@ -53,126 +54,166 @@ const AnnotationView: FC = () => {
      */
 
     const generateFeatureBBoxs = () => {
-        if (!!idoc) {
-            let objs: DetectedObject[] = idoc.objects!;
-            if (imgContainer.current && objs && objs.length > 0) {
-                let imgHeight = imgContainer.current.offsetHeight
-                if (imgHeight > 0) {
-                    let ratio = imgHeight / idoc.height
-                    return objs.filter((_, index) => featsVis && featsVis[index])
-                        .map((obj, index) => {
-                            let color = CONCEPT_COLORS[index % 10];
-                            let label: Label | undefined = getLabel(labelsMap, obj);
-                            return <Box key={obj._id} position='absolute' border='solid 5px' borderColor={color}
-                                        sx={{top: ratio * obj.tlx - 5, left: ratio * obj.tly - 5}}
-                                        width={ratio * (obj.brx - obj.tlx) + 10}
-                                        height={ratio * (obj.bry - obj.tly) + 10}
-                                        onClick={() => {
-                                            if (project && idoc) {
-                                                navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}/${index}`)
-                                            }
-                                        }}>
-                                <Typography color={color} sx={{fontSize: '20px', ml: '4px'}}>
-                                    <b color={color}>{!!label ? label.name : obj.labelId}</b>
-                                </Typography>
-                            </Box>
-                        });
-                }
+        if (idoc && featsVis && conceptSubs && features && imgContainer.current) {
+            let imgHeight = imgContainer.current.offsetHeight
+            if (imgHeight > 0) {
+                let ratio = imgHeight / idoc.height
+                return features.map((feat, index) => {
+                    if (featsVis[index]) {
+                        let color = CONCEPT_COLORS[index % 10];
+                        // Supply text only for first bbox (use the text part of the concept of current annotation)
+                        return feat.bboxs!.map((bbox, idx) => {
+                            let key = feat._id + '_' + idx;
+                            if (idx === 0) {
+                                return <Box key={key} position='absolute' border='solid 5px'
+                                            borderColor={color}
+                                            sx={{top: ratio * bbox.tlx - 5, left: ratio * bbox.tly - 5}}
+                                            width={ratio * (bbox.brx - bbox.tlx) + 10}
+                                            height={ratio * (bbox.bry - bbox.tly) + 10}
+                                            onClick={() => {
+                                            }}>
+                                    <Typography color={color} sx={{fontSize: '14px', ml: '4px'}}>
+                                        <b color={color}>{conceptSubs[index]}</b>
+                                    </Typography>
+                                </Box>
+                            } else {
+                                return <Box key={key} position='absolute' border='solid 5px' borderColor={color}
+                                            sx={{top: ratio * bbox.tlx - 5, left: ratio * bbox.tly - 5}}
+                                            width={ratio * (bbox.brx - bbox.tlx) + 10}
+                                            height={ratio * (bbox.bry - bbox.tly) + 10}
+                                            onClick={() => {
+                                            }}/>
+                            }
+                        })
+                    }
+                });
             }
         }
     }
 
-    const bboxs = useMemo(generateFeatureBBoxs, [idoc, imgUrl, labelsMap, featsVis])
+    const bboxs = useMemo(generateFeatureBBoxs, [idoc, conceptSubs, features, featsVis])
 
-    const loadProject = async () => {
-        if (projectName) {
-            return await getRequest('project/fromUser', encodeURIComponent(projectName!))
-        } else {
-            navigate('/notfound404')
+    const extractConceptStrings = (anno: Annotation) => {
+        let conceptStrings = []
+        let currVal = -1
+        let currString = ''
+        for (let i = 0; i < anno.tokens.length; i++) {
+            let maskVal = anno.conceptMask[i];
+            if (maskVal >= 0) {
+                if (currVal === maskVal) {
+                    let token = anno.tokens[i];
+                    if (token === ',' || token === '.') {
+                        currString += token
+                    } else {
+                        currString += ' ' + token
+                    }
+                } else {
+                    conceptStrings.push(currString)
+                    currString = ''
+                    currVal = -1
+                }
+            }
         }
-    }
-
-    const loadDoc = async () => {
-        if (docId) {
-            return await getRequest('idoc', docId)
+        if (currString.length > 0) {
+            conceptStrings.push(currString)
         }
-        navigate('/notfound404')
-    }
-
-    const loadDocImage = async (imgDoc: ImageDocument) => {
-        return await loadImage('idoc/img', imgDoc._id)
-    }
-
-    const loadFeatures = async (annotationId: string) => {
-        return await getRequest('visFeature/annotation', annotationId)
+        dispatch(setConceptSubs(conceptStrings))
     }
 
     useEffect(() => {
-        if (!project) {
-            loadProject().then(projectData => projectData && dispatch(setProject(projectData.result)))
+        if (!projectName) {
+            navigate('/notfound404')
+        } else if (!project || project.title != projectName) {
+            loadProject(projectName).then(projectData => projectData ?
+                dispatch(setProject(projectData.result)) :
+                navigate('/notfound404'))
         }
-        if (idoc) {
-            dispatch(setTitle(idoc.name));
-        } else {
-            loadDoc().then(idocData => {
+        if (!docId) {
+            navigate('/notfound404')
+        } else if (!idoc || idoc._id != docId) {
+            loadDoc(docId).then(idocData => {
                 if (idocData) {
                     dispatch(setDoc(idocData.result));
-                    dispatch(setTitle(idocData.result.name));
-                    loadDocImage(idocData.result).then(file => {
+                    loadDocImage(docId).then(file => {
                         file && dispatch(setImgUrl(file))
                     });
-                }
-            })
-        }
-        context.setControlPanel(<ObjectControlPanel/>)
-    }, []);
-
-    useEffect(() => {
-        if (!labelsMap) {
-            mapLabels(idoc).then(lm => lm && dispatch(setLabelMap(lm)));
-        }
-        if (objIdx && annoIdx) {
-            let oidx = parseInt(objIdx);
-            let aidx = parseInt(annoIdx);
-            if (idoc && idoc.objects) {
-                if (oidx >= 0 && aidx >= 0 && oidx < idoc.objects.length) {
-                    let annotations = idoc.objects[oidx].annotations;
-                    if (annotations && aidx < annotations.length) {
-                        dispatch(setObjectIdx(oidx));
-                        loadFeatures(annotations[aidx]._id).then(features => dispatch(setFeatures(features)));
-                    } else {
-                        navigate('/notfound404')
-                    }
                 } else {
                     navigate('/notfound404')
                 }
-            }
-        } else {
-            navigate('/notfound404')
+            })
         }
-    }, [idoc]);
+        context.setControlPanel(<AnnotationControlPanel/>)
+    }, []);
+
+    useEffect(() => {
+        if (idoc && imgUrl) {
+            if (idoc.objects && objIntIdx !== undefined && annoIntIdx !== undefined &&
+                objIntIdx >= 0 && annoIntIdx >= 0 && objIntIdx < idoc.objects.length) {
+                let annotations = idoc.objects[objIntIdx].annotations;
+                if (objId && annotations && annoIntIdx < annotations.length) {
+                    dispatch(setObjectIdx(objIntIdx));
+                    let obj = idoc.objects[objIntIdx];
+                    dispatch(setObject(obj));
+                    dispatch(setTitle(`Annotation ${annoIntIdx + 1} of Object ${objectLabel?.name}`));
+                    let newWidth = obj.brx - obj.tlx
+                    let newHeight = obj.bry - obj.tly
+                    cropImage(canvasRef, imgUrl, obj.tlx, obj.tly, newWidth, newHeight)
+                    dispatch(setAnnotationIdx(annoIntIdx));
+                    let currAnno = annotations[annoIntIdx];
+                    if (!annotation || currAnno._id !== annotation._id) {
+                        dispatch(setAnnotation(currAnno));
+                        extractConceptStrings(currAnno);
+                    }
+                    loadVisualFeatures(currAnno._id).then(feature => dispatch(setFeatures(feature)));
+                } else {
+                    navigate('/notfound404')
+                }
+            } else {
+                navigate('/notfound404')
+            }
+        }
+    }, [idoc, imgUrl, objIntIdx, annoIntIdx]);
+
+    const isNextDisabled = () => {
+        if (idoc?.objects && objIntIdx !== undefined && annoIntIdx !== undefined) {
+            let obj = idoc.objects[objIntIdx];
+            return !obj.annotations || annoIntIdx >= obj.annotations.length - 1;
+        } else {
+            return true
+        }
+    }
 
     return (
         <Box height='100%'>
-            <Box height='94%'
+            <Box height='54%'
                  sx={{
                      p: 2, bgcolor: 'rgba(50, 50, 255, 0.08)',
                      border: '2px solid',
                      borderColor: 'divider',
                      position: 'relative'
                  }}>
-                <Box ref={imgContainer} height='96%' sx={{
+                <Box ref={imgContainer} height='93%' sx={{
                     position: 'absolute', display: 'block',
                     left: '50%', transform: 'translateX(-50%)'
                 }}>
-                    {imgUrl &&
-                        <canvas ref={canvasRef} style={{height: '100%'}}/>}
+                    {<canvas ref={canvasRef} style={{height: '100%'}}/>}
                     {showFeats && bboxs}
                 </Box>
             </Box>
+            <Box height='40%'/>
             <Box sx={{display: 'flex', width: '100%'}}>
-                <Button sx={{width: '50%'}} variant='outlined'>Previous</Button>
-                <Button sx={{width: '50%'}} variant='outlined'>Next</Button>
+                <Button sx={{width: '50%'}} variant='outlined' disabled={annoIntIdx === undefined || annoIntIdx <= 0}
+                        onClick={() => {
+                            if (project && docId && objIntIdx !== undefined && annoIntIdx !== undefined) {
+                                navigate(`/project/${encodeURIComponent(project.title)}/idoc/${docId}/${objIntIdx}/${annoIntIdx - 1}`)
+                            }
+                        }}>Previous</Button>
+                <Button sx={{width: '50%'}} variant='outlined' disabled={isNextDisabled()}
+                        onClick={() => {
+                            if (project && docId && objIntIdx !== undefined && annoIntIdx !== undefined) {
+                                navigate(`/project/${encodeURIComponent(project.title)}/idoc/${docId}/${objIntIdx}/${annoIntIdx + 1}`)
+                            }
+                        }}>Next</Button>
             </Box>
         </Box>
     )

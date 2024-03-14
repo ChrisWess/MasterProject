@@ -66,6 +66,8 @@ const ObjectPage: FC = () => {
     // The Annotation View shows only the annotation of single user with all its details. An annotator
     // sees only his own annotation.
 
+    let objIntIdx = objIdx ? parseInt(objIdx) : undefined;
+
     useEffect(() => {
         if (!projectName) {
             navigate('/notfound404')
@@ -98,25 +100,20 @@ const ObjectPage: FC = () => {
     }, [idoc, labelsMap]);
 
     useEffect(() => {
-        if (objIdx !== undefined) {
-            let idx = parseInt(objIdx);
-            if (imgUrl && idoc && idoc.objects) {
-                if (idx >= 0 && idx < idoc.objects.length) {
-                    dispatch(setObjectIdx(idx));
-                    dispatch(setTitle(`Object ${idx + 1} of ${idoc.name}`));
-                    let obj = idoc.objects[idx];
-                    dispatch(setObject(obj));
-                    let newWidth = obj.brx - obj.tlx
-                    let newHeight = obj.bry - obj.tly
-                    cropImage(canvasRef, imgUrl, obj.tlx, obj.tly, newWidth, newHeight)
-                } else {
-                    navigate('/notfound404')
-                }
+        if (imgUrl && idoc) {
+            if (objIntIdx !== undefined && idoc.objects && objIntIdx >= 0 && objIntIdx < idoc.objects.length) {
+                dispatch(setObjectIdx(objIntIdx));
+                dispatch(setTitle(`Object ${objIntIdx + 1} of ${idoc.name}`));
+                let obj = idoc.objects[objIntIdx];
+                dispatch(setObject(obj));
+                let newWidth = obj.brx - obj.tlx
+                let newHeight = obj.bry - obj.tly
+                cropImage(canvasRef, imgUrl, obj.tlx, obj.tly, newWidth, newHeight)
+            } else {
+                navigate('/notfound404')
             }
-        } else {
-            navigate('/notfound404')
         }
-    }, [idoc, imgUrl]);
+    }, [idoc, imgUrl, objIntIdx]);
 
     // TODO: save user interaction as preferences and determine the best layout for a user with these stats
 
@@ -140,8 +137,21 @@ const ObjectPage: FC = () => {
                 </Box>
             </Box>
             <Box sx={{display: 'flex', width: '100%'}}>
-                <Button sx={{width: '50%'}} variant='outlined'>Previous</Button>
-                <Button sx={{width: '50%'}} variant='outlined'>Next</Button>
+                <Button sx={{width: '50%'}} disabled={objIntIdx === undefined || objIntIdx <= 0}
+                        onClick={() => {
+                            if (project && docId && objIntIdx !== undefined) {
+                                navigate(`/project/${encodeURIComponent(project.title)}/idoc/${docId}/${objIntIdx - 1}`)
+                            }
+                        }}
+                        variant='outlined'>Previous</Button>
+                <Button sx={{width: '50%'}}
+                        disabled={!idoc || !idoc.objects || objIntIdx === undefined || objIntIdx >= idoc.objects.length - 1}
+                        onClick={() => {
+                            if (project && docId && objIntIdx !== undefined) {
+                                navigate(`/project/${encodeURIComponent(project.title)}/idoc/${docId}/${objIntIdx + 1}`)
+                            }
+                        }}
+                        variant='outlined'>Next</Button>
             </Box>
         </Box>
     )

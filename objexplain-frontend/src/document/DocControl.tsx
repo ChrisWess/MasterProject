@@ -143,7 +143,7 @@ const DocControlPanel: FC = () => {
 
     const objList = useMemo(() => {
         let objs = idoc?.objects;
-        // TODO: error (precondition 3 objs): delete first obj from list => following idxs are removed from list
+        // TODO: open a confirmation dialog when clicking object deletion
         if (objs) {
             return (<List className="projects" key="mainList">
                 {objs?.map((obj, index) =>

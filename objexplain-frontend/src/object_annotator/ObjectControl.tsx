@@ -1,6 +1,6 @@
 import {FC, useEffect, useMemo, useState} from "react";
 import Box from "@mui/material/Box";
-import {Divider, IconButton, List, ListItem} from "@mui/material";
+import {Divider, IconButton, List, ListItem, ListItemIcon} from "@mui/material";
 import ArrowLeftIcon from '@mui/icons-material/ArrowLeft';
 import ArrowDropUpIcon from '@mui/icons-material/ArrowDropUp';
 import {useDispatch, useSelector} from "react-redux";
@@ -14,6 +14,7 @@ import ListItemText from "@mui/material/ListItemText";
 import LabelSelect from "./LabelSelector";
 import {clearObject, setObjectLabel} from "../reducers/objectSlice";
 import {clearDoc, disableAnnoMode} from "../reducers/idocSlice";
+import ListItemButton from "@mui/material/ListItemButton";
 
 
 export const getMappedLabel = (labelsMap: [string, Label][], labelId: string) => {
@@ -45,17 +46,27 @@ const ObjectControlPanel: FC = () => {
             let annos = objs[objIdx].annotations
             return (<List className="annotations" key="annoList">
                 {annos?.map((anno, index) =>
-                    <ListItem divider key={'annoItem' + index}>
-                        <ListItemText key={'annoText' + index}>
-                            <Typography variant='h6' color='primary.light'>
-                                {anno.text}
-                            </Typography>
-                        </ListItemText>
-                    </ListItem>)}
+                    <ListItemButton key={'annoButt' + index} sx={{py: 0}}
+                                    onClick={() => {
+                                        if (project && idoc) {
+                                            navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}/${objIdx}/${index}`)
+                                        }
+                                    }}>
+                        <ListItem divider key={'annoItem' + index}>
+                            <ListItemIcon sx={{color: 'text.secondary', width: '10px'}} key={'annoIcon' + index}>
+                                {index + 1}
+                            </ListItemIcon>
+                            <ListItemText key={'annoText' + index}>
+                                <Typography variant='inherit' color='primary.light'>
+                                    {anno.text}
+                                </Typography>
+                            </ListItemText>
+                        </ListItem>
+                    </ListItemButton>)}
             </List>)
         }
         return undefined
-    }, [idoc])
+    }, [idoc, objIdx])
 
     const toProjectView = () => {
         if (project) {
@@ -96,7 +107,9 @@ const ObjectControlPanel: FC = () => {
                          categoriesDescriptor='Add further Categories: ' makeNewObject={false}
                          setAlertContent={setAlertContent} setAlertSeverity={setAlertSeverity}/>
             <Divider/>
-            {!!annoList && annoList}
+            <Box sx={{maxHeight: '45%', overflow: 'auto'}}>
+                {!!annoList && annoList}
+            </Box>
             <AlertMessage content={alertContent} setContent={setAlertContent} severity={alertSeverity}
                           displayTime={6000}/>
         </Box>
