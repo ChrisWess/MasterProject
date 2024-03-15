@@ -28,6 +28,7 @@ const ResponsiveAppBar = () => {
     useLoadUser();
     // global state (redux)
     const userInfo = useSelector((state: any) => state.user.value);
+    const project = useSelector((state: any) => state.mainPage.currProject);
     const title = useSelector((state: any) => state.appBar.title);
 
     const helpContent =
@@ -96,18 +97,22 @@ const ResponsiveAppBar = () => {
             </DialogContentText>
         </DialogContent>
 
-    function handlePage(page: string) {
+    async function handlePage(page: string) {
         console.log("Pressed " + page + "-button")
         switch (page) {
             case "Logout":
-                getRequest('logout')
+                await getRequest('logout')
                 window.location.href = 'http://localhost:5000/login'
                 break;
             case "Dashboard":
                 window.location.href = 'http://localhost:3000/Dashboard'
                 break;
             case "Project":
-                window.location.href = 'http://localhost:3000/Project'  // TODO: switch to currently selected project or go to dashboard if none selected
+                if (project) {
+                    window.location.href = 'http://localhost:3000/project/' + encodeURIComponent(project.title)
+                } else {
+                    window.location.href = 'http://localhost:3000/Dashboard'
+                }
                 break;
             case "Help":
                 handleOpen()

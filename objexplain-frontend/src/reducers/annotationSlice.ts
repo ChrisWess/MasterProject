@@ -6,20 +6,24 @@ interface AnnotationPageState {
     annotationIdx: number | undefined;
     annotation: Annotation | undefined;
     conceptSubstrings: string[] | undefined;
+    conceptRanges: [number, number][] | undefined;
     objImgUrl: string | undefined;
     showFeatures: boolean;
     featuresVis: boolean[] | undefined;
     features: VisualFeature[] | undefined;
+    showConcepts: boolean;
 }
 
 const initialState: AnnotationPageState = {
     annotationIdx: undefined,
     annotation: undefined,
     conceptSubstrings: undefined,
+    conceptRanges: undefined,
     objImgUrl: undefined,
     showFeatures: true,
     featuresVis: undefined,
     features: undefined,
+    showConcepts: true,
 };
 
 export const annotationPageSlice = createSlice({
@@ -35,6 +39,9 @@ export const annotationPageSlice = createSlice({
         setConceptSubs: (state, action: PayloadAction<string[]>) => {
             state.conceptSubstrings = action.payload;
         },
+        setConceptRanges: (state, action: PayloadAction<[number, number][]>) => {
+            state.conceptRanges = action.payload;
+        },
         setObjImgUrl: (state, action: PayloadAction<string>) => {
             state.objImgUrl = action.payload;
         },
@@ -44,6 +51,14 @@ export const annotationPageSlice = createSlice({
             state.annotation = undefined;
             state.conceptSubstrings = undefined;
             state.objImgUrl = undefined;
+        },
+        initVisibleFeatures: (state, action: PayloadAction<number>) => {
+            state.featuresVis = Array(action.payload).fill(true);
+        },
+        addVisibleFeature: (state) => {
+            if (state.featuresVis) {
+                state.featuresVis = [...state.featuresVis, true];
+            }
         },
         switchFeaturesVisible: (state) => {
             state.showFeatures = !state.showFeatures;
@@ -64,9 +79,9 @@ export const annotationPageSlice = createSlice({
 
 // actions
 export const {
-    setAnnotationIdx, setAnnotation, setConceptSubs,
-    setObjImgUrl, switchFeaturesVisible, switchFeatVisible,
-    setFeatures,
+    setAnnotationIdx, setAnnotation, setConceptSubs, setConceptRanges,
+    setObjImgUrl, initVisibleFeatures, addVisibleFeature,
+    switchFeaturesVisible, switchFeatVisible, setFeatures,
 } = annotationPageSlice.actions;
 
 export default annotationPageSlice.reducer;

@@ -14,20 +14,6 @@ import AnnotationControlPanel from "./AnnotationControl";
 import {setAnnotation, setAnnotationIdx, setFeatures, setObjImgUrl} from "../reducers/annotationSlice";
 
 
-export const CONCEPT_COLORS = [
-    '#9A6324',
-    '#808000',
-    '#469990',
-    '#FFD8B1',
-    '#DCBEFF',
-    '#404040',
-    '#AAFFC3',
-    '#F032E6',
-    '#6495ED',
-    '#228B22',
-]
-
-
 const FeatureView: FC = () => {
     const {projectName, docId, objIdx, annoIdx} = useParams();
     const context: any = useOutletContext();
