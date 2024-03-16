@@ -13,12 +13,17 @@ import {setObject, setObjectIdx, setObjectLabel} from "../reducers/objectSlice";
 import {Annotation} from "../api/models/annotation";
 import AnnotationControlPanel from "./AnnotationControl";
 import {
+    clearSelectedConcept,
     initVisibleFeatures,
     setAnnotation,
     setAnnotationIdx,
     setConceptRanges,
     setConceptSubs,
-    setFeatures
+    setFeatures,
+    setMarkedWords,
+    setPrevColors,
+    setSelectedConcept,
+    setWordFlags
 } from "../reducers/annotationSlice";
 import {VisualFeature} from "../api/models/feature";
 import {cropImage, loadDoc} from "../object_annotator/ObjectPage";
@@ -53,11 +58,6 @@ const AnnotationView: FC = () => {
     const imgContainer = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [hoverToggle, setHoverToggle] = useState<boolean>(true);
-    const [selectedConcept, setSelectedConcept] = useState<number>();
-    const [cColor, setColor] = useState<string>("black");
-    const [wordFlags, setWordFlags] = useState<boolean[]>([]);
-    const [markedWords, setMarkedWords] = useState<number[]>([]);
-    const [markedWordsPrevColors, setPrevColors] = useState<any[]>([]);
 
     const navigate = useNavigate();
     const dispatch = useDispatch();
@@ -67,6 +67,9 @@ const AnnotationView: FC = () => {
     const imgUrl: string | undefined = useSelector((state: any) => state.iDoc.imgUrl);
     const objectLabel: Label | undefined = useSelector((state: any) => state.object.objectLabel);
     const annotation: Annotation | undefined = useSelector((state: any) => state.annotation.annotation);
+    const markedWords: number[] = useSelector((state: any) => state.annotation.markedWords);
+    const wordFlags: boolean[] = useSelector((state: any) => state.annotation.wordFlags);
+    const prevWordColors: string[] | undefined = useSelector((state: any) => state.annotation.markedWordsPrevColors);
     const featsVis: boolean[] | undefined = useSelector((state: any) => state.annotation.featuresVis);
     const showFeats: boolean = useSelector((state: any) => state.annotation.showFeatures);
     const features: VisualFeature[] | undefined = useSelector((state: any) => state.annotation.features);
@@ -124,16 +127,26 @@ const AnnotationView: FC = () => {
     const bboxs = useMemo(generateFeatureBBoxs, [idoc, conceptSubs, features, featsVis])
 
     const clearPrevMarking = () => {
-        if (markedWords.length === 1) {
-            let prev = document.getElementById("w" + markedWords[0])
-            if (prev) {  // && prev.classList.contains("wregular")
-                prev.style.backgroundColor = markedWordsPrevColors[0]
-            }
-        } else if (markedWords.length === 2) {
-            for (let i = markedWords[0]; i < markedWords[1]; i++) {
-                let prev = document.getElementById("w" + i)
+        if (prevWordColors) {
+            if (markedWords.length === 1) {
+                let prev = document.getElementById("w" + markedWords[0])
                 if (prev) {  // && prev.classList.contains("wregular")
-                    prev.style.backgroundColor = markedWordsPrevColors[i - markedWords[0]]
+                    prev.style.backgroundColor = prevWordColors[0]
+                }
+            } else if (markedWords.length === 2) {
+                let wordsStartIdx = markedWords[0]
+                for (let i = wordsStartIdx; i < markedWords[1]; i++) {
+                    let prev = document.getElementById("w" + i)
+                    let prevColor = prevWordColors[i - wordsStartIdx]
+                    if (prev) {  // && prev.classList.contains("wregular")
+                        prev.style.backgroundColor = prevColor
+                    }
+                    if (i > wordsStartIdx) {
+                        prev = document.getElementById("ws" + i)
+                        if (prev) {
+                            prev.style.backgroundColor = prevColor
+                        }
+                    }
                 }
             }
         }
@@ -142,15 +155,16 @@ const AnnotationView: FC = () => {
     const setNewConceptSelection = (value: any) => {
         clearPrevMarking()
         if (!value) {
-            setSelectedConcept(undefined)
-            setColor("black")
-        } else if (typeof value === 'number') {
-            setSelectedConcept(value)
-            setColor(CONCEPT_COLORS[value])
+            dispatch(clearSelectedConcept())
         } else {
-            let idx = parseInt(value.currentTarget.id.substring(1));
-            setSelectedConcept(idx)
-            setColor(CONCEPT_COLORS[idx])
+            let idx;
+            if (typeof value === 'number') {
+                idx = value;
+            } else {
+                idx = parseInt(value.currentTarget.id.substring(1));
+            }
+            dispatch(setMarkedWords(conceptRanges![idx]))
+            dispatch(setSelectedConcept(idx))
         }
     }
 
@@ -164,28 +178,46 @@ const AnnotationView: FC = () => {
     const markWords = (markRange: number[]) => {
         clearPrevMarking();
         let prevColors = []
-        if (markRange.length > 1 && markRange[0] + 1 < markRange[1]) {
-            for (let i = markRange[0]; i < markRange[1]; i++) {
+        if (markRange.length === 1) {
+            let element = document.getElementById("w" + markRange[0])
+            if (element) {
+                prevColors.push(getStyle(element, "background-color"));
+                element.style.backgroundColor = "deepskyblue";
+                dispatch(setMarkedWords(markRange));
+            } else {
+                dispatch(setMarkedWords([]));
+            }
+        } else if (markRange.length === 2) {
+            let startIdx = markRange[0];
+            for (let i = startIdx; i < markRange[1]; i++) {
                 let prev = document.getElementById("w" + i)
                 if (prev) {
                     prevColors.push(getStyle(prev, "background-color"));
                     prev.style.backgroundColor = "deepskyblue"
                 }
+                if (i > startIdx) {
+                    prev = document.getElementById("ws" + i)
+                    if (prev) {
+                        prev.style.backgroundColor = "deepskyblue"
+                    }
+                }
             }
-            setMarkedWords(markRange)
+            dispatch(setMarkedWords(markRange))
+        } else {
+            dispatch(setMarkedWords([]));
         }
-        setColor("deepskyblue")
+        dispatch(setPrevColors(prevColors))
     }
 
     const highlightedAnnotation = useMemo(() => {
         let buffer: ReactJSXElement[] = new Array<ReactJSXElement>()
         if (annotation && conceptRanges) {
             let tokens: string[] = annotation.tokens;
-            let flags = []
+            let flags: boolean[] = []
             let currRange = 0;
             let idxStart = -1;
             let idxEnd = -1;
-            if (conceptRanges && conceptRanges.length > currRange) {
+            if (conceptRanges.length > currRange) {
                 idxStart = conceptRanges[currRange][0];
                 idxEnd = conceptRanges[currRange][1];
             }
@@ -196,31 +228,36 @@ const AnnotationView: FC = () => {
                 if (!showConcepts || idxStart === -1 || idxStart > i) {
                     let currentId = 'w' + i;
                     if (isPunct) {
-                        if (markedWords.length != 0 && i >= markedWords[0] && i <= markedWords[1]) {
+                        if (markedWords.length != 0 && i >= markedWords[0] && i < markedWords[1]) {
                             buffer.push(<abbr key={currentId} id={currentId}><Highlighted text={token}/></abbr>);
                         } else {
                             buffer.push(<abbr key={currentId} id={currentId}>{token}</abbr>);
                         }
                     } else {
-                        if (markedWords.length != 0 && i >= markedWords[0] && i <= markedWords[1]) {
+                        if (markedWords.length != 0 && i >= markedWords[0] && i < markedWords[1]) {
                             if (i == markedWords[0]) {
+                                buffer.push(<abbr id={'ws' + i} key={'wSpace' + i}>{' '}</abbr>)
                                 buffer.push(<abbr key={currentId} id={currentId} className="wregular"><Highlighted
-                                    text={" " + token}/></abbr>);
-                            } else if (i == markedWords[1]) {
-                                buffer.push(<abbr key={currentId} id={currentId} className="wregular"><Highlighted
-                                    text={" " + token}/></abbr>);
+                                    text={token}/></abbr>);
                             } else {
-                                buffer.push(<abbr key={currentId} id={currentId} className="wregular"
-                                                  style={{backgroundColor: "yellow"}}>{" " + token} </abbr>);
+                                buffer.push(<abbr id={'ws' + i} key={'wSpace' + i}><Highlighted text={' '}/></abbr>)
+                                if (i == markedWords[1] - 1) {
+                                    buffer.push(<abbr key={currentId} id={currentId} className="wregular"><Highlighted
+                                        text={token}/></abbr>);
+                                } else {
+                                    buffer.push(<abbr key={currentId} id={currentId} className="wregular"
+                                                      style={{backgroundColor: "deepskyblue"}}>{token}</abbr>);
+                                }
                             }
                         } else {
-                            buffer.push(<abbr key={currentId} id={currentId} className="wregular">{" " + token}</abbr>)
+                            buffer.push(<abbr id={'ws' + i} key={'wSpace' + i}>{' '}</abbr>)
+                            buffer.push(<abbr key={currentId} id={currentId} className="wregular">{token}</abbr>)
                         }
                     }
                 } else if (i === idxEnd) {
                     let id = 'w' + idxStart
+                    let idEnd = "w" + idxEnd;
                     let currentId = 'c' + currRange;
-                    let id1 = "w" + idxEnd;
                     buffer.push(
                         <b key={currentId} id={currentId} onClick={setNewConceptSelection}>
                             {" "}
@@ -234,12 +271,13 @@ const AnnotationView: FC = () => {
                                     annotation={annotation}
                                     color={CONCEPT_COLORS[currRange % 10]}/>
                             </abbr>
-                            {tokens.slice(idxStart + 1, idxEnd).map((elem, index) => (
-                                <abbr key={'w' + (idxStart + index + 1) + "-1"}
-                                      id={'w' + (idxStart + index + 1)}
-                                      className={"cr cr-" + currRange}
-                                      style={{backgroundColor: CONCEPT_COLORS[currRange % 10]}}>
-                                    {" "}
+                            {tokens.slice(idxStart + 1, idxEnd).map((elem, index) => {
+                                let tokenIdx = idxStart + index + 1
+                                return <abbr key={'w' + tokenIdx + "-1"}
+                                             id={'w' + tokenIdx}
+                                             className={"cr cr-" + currRange}
+                                             style={{backgroundColor: CONCEPT_COLORS[currRange % 10]}}>
+                                    {flags[tokenIdx] && " "}
                                     <HoverBox
                                         word={elem}
                                         conceptIdx={currRange}
@@ -247,8 +285,8 @@ const AnnotationView: FC = () => {
                                         annotation={annotation}
                                         color={CONCEPT_COLORS[currRange % 10]}/>
                                 </abbr>
-                            ))}
-                            <abbr key={id1 + "-1"} id={id1} className={"cr cr-" + currRange}
+                            })}
+                            <abbr key={idEnd + "-1"} id={idEnd} className={"cr cr-" + currRange}
                                   style={{backgroundColor: CONCEPT_COLORS[currRange % 10]}}>
                                 {" "}
                                 <HoverBox
@@ -257,8 +295,8 @@ const AnnotationView: FC = () => {
                                     hovertoggle={hoverToggle}
                                     annotation={annotation}
                                     color={CONCEPT_COLORS[currRange % 10]}/>
-                                <a key={id1 + "-2"} id={id1} href="">]</a>
-                                <sub key={id1 + "-3"} id={id1}>{currRange}</sub>
+                                <a key={idEnd + "-2"} id={idEnd} href="">]</a>
+                                <sub key={idEnd + "-3"} id={idEnd}>{currRange}</sub>
                             </abbr>
                         </b>)
                 } else {
@@ -275,7 +313,7 @@ const AnnotationView: FC = () => {
                     }
                 }
             }
-            setWordFlags(flags);
+            dispatch(setWordFlags(flags));
         }
         return buffer
     }, [annotation, conceptRanges, markedWords])
@@ -312,76 +350,6 @@ const AnnotationView: FC = () => {
         }
         dispatch(setConceptSubs(conceptStrings))
         dispatch(setConceptRanges(ranges))
-    }
-
-    const setupTextHighlighting = (anno: Annotation) => {
-        document.addEventListener('mouseup', () => {
-            let words = anno.tokens
-            let selection = window.getSelection()
-            if (selection && words.length > 0) {
-                let anchor = selection.anchorNode
-                let nfocus = selection.focusNode
-                if (anchor && nfocus && !nfocus.hasChildNodes() && !anchor.hasChildNodes()) {
-                    let startElem = anchor.parentElement
-                    let endElem = nfocus.parentElement
-                    let docView = document.getElementById("docView")
-                    if (startElem && endElem && docView && startElem.id.startsWith("w") && endElem.id.startsWith("w") &&
-                        docView.contains(startElem) && docView.contains(endElem)) {
-                        let startWordIdx: number = parseInt(startElem.id.substring(1))
-                        let endWordIdx: number = parseInt(endElem.id.substring(1))
-                        let startOffset: number
-                        let endOffset: number
-                        if (startWordIdx === endWordIdx) {
-                            startOffset = Math.min(selection.anchorOffset, selection.focusOffset)
-                            endOffset = Math.max(selection.anchorOffset, selection.focusOffset)
-                            let word: string = words[startWordIdx]
-                            // offset needs to start at 1, because there is always a space at 0
-                            if (startOffset <= 1 && wordFlags[startWordIdx] && endOffset === word.length + 1) {
-                                markWords([startWordIdx])
-                                selection.empty()
-                            }
-                            return
-                        } else if (startWordIdx > endWordIdx) {
-                            let temp: number = startWordIdx
-                            startWordIdx = endWordIdx
-                            endWordIdx = temp
-                            startOffset = selection.focusOffset
-                            endOffset = selection.anchorOffset
-                        } else {
-                            startOffset = selection.anchorOffset
-                            endOffset = selection.focusOffset
-                        }
-                        let result: number[] = []
-                        let wordFlagsSlice: boolean[] = wordFlags.slice(startWordIdx, endWordIdx + 1)
-                        for (let i = 1; i < wordFlagsSlice.length - 1; i++) {
-                            if (!wordFlagsSlice[i]) {
-                                return
-                            }
-                        }
-
-                        if (!wordFlagsSlice[0]) {
-                            result.push(startWordIdx + 1)
-                        } else if (startOffset <= 1) {
-                            result.push(startWordIdx)
-                        } else {
-                            result.push(startWordIdx + 1)
-                        }
-
-                        if (!wordFlagsSlice[wordFlagsSlice.length - 1]) {
-                            result.push(endWordIdx)
-                        } else if (endOffset === words[endWordIdx].length + 1) {
-                            result.push(endWordIdx + 1)
-                        } else {
-                            result.push(endWordIdx)
-                        }
-                        if (result[1] > result[0]) {
-                            markWords(result)
-                            selection.empty()
-                        }
-                    }
-                }
-            }
-        });
     }
 
     useEffect(() => {
@@ -437,7 +405,6 @@ const AnnotationView: FC = () => {
                     if (!annotation || currAnno._id !== annotation._id) {
                         dispatch(setAnnotation(currAnno));
                         extractConceptInfo(currAnno);
-                        setupTextHighlighting(currAnno);
                     }
                     loadVisualFeatures(currAnno._id).then(data => {
                         if (data) {
@@ -455,6 +422,102 @@ const AnnotationView: FC = () => {
         }
     }, [idoc, imgUrl, objIntIdx, annoIntIdx]);
 
+    const setupTextHighlighting = (anno: Annotation, ranges: [number, number][], wFlags: boolean[]) => {
+        let words = anno.tokens
+        let selection = window.getSelection()
+        if (selection && words.length > 0) {
+            let anchor = selection.anchorNode
+            let nfocus = selection.focusNode
+            if (anchor && nfocus && nfocus.nodeType === 3 && anchor.nodeType === 3) {
+                let startElem = anchor.parentElement
+                let endElem = nfocus.parentElement
+                if (startElem?.id === '') {
+                    startElem = startElem.parentElement
+                }
+                if (endElem?.id === '') {
+                    endElem = endElem.parentElement
+                }
+                // FIXME: there should be no selection that is only inside of a concept
+                console.log(startElem?.id)
+                console.log(endElem?.id)
+                let annoViewer = document.getElementById("annoViewer")
+                if (startElem && endElem && annoViewer && startElem.id.startsWith("w") && endElem.id.startsWith("w")
+                    && annoViewer.contains(startElem) && annoViewer.contains(endElem)) {
+                    let substrStart = startElem.id.startsWith('ws') ? 2 : 1
+                    let startWordIdx: number = parseInt(startElem.id.substring(substrStart))
+                    substrStart = endElem.id.startsWith('ws') ? 2 : 1
+                    let endWordIdx: number = parseInt(endElem.id.substring(substrStart))
+                    let startOffset: number
+                    let endOffset: number
+                    if (startWordIdx === endWordIdx) {
+                        for (let i = 0; i < ranges.length; i++) {
+                            let range = ranges[i]
+                            if (startWordIdx >= range[0] && startWordIdx <= range[1]) {
+                                return
+                            }
+                        }
+                        if (wFlags[startWordIdx]) {
+                            markWords([startWordIdx])
+                            selection.empty()
+                        }
+                        return
+                    } else if (startWordIdx > endWordIdx) {
+                        let temp: number = startWordIdx
+                        startWordIdx = endWordIdx
+                        endWordIdx = temp
+                        startOffset = selection.focusOffset
+                        endOffset = selection.anchorOffset
+                    } else {
+                        startOffset = selection.anchorOffset
+                        endOffset = selection.focusOffset
+                    }
+                    let result: number[] = []
+                    for (let i = startWordIdx; i < endWordIdx; i++) {
+                        if (!wFlags[i]) {
+                            return
+                        }
+                    }
+                    for (let i = 0; i < ranges.length; i++) {
+                        let range = ranges[i]
+                        if (startWordIdx >= range[0] && endWordIdx <= range[1]) {
+                            return
+                        }
+                    }
+
+                    if (!wFlags[startWordIdx]) {
+                        result.push(startWordIdx + 1)
+                    } else if (startOffset <= 1) {
+                        result.push(startWordIdx)
+                    } else {
+                        result.push(startWordIdx + 1)
+                    }
+
+                    if (!wFlags[endWordIdx]) {
+                        result.push(endWordIdx)
+                    } else if (endOffset === words[endWordIdx].length + 1) {
+                        result.push(endWordIdx + 1)
+                    } else {
+                        result.push(endWordIdx)
+                    }
+                    if (result[1] > result[0]) {
+                        markWords(result)
+                        selection.empty()
+                    }
+                }
+            }
+        }
+    }
+
+    useEffect(() => {
+        if (wordFlags && wordFlags.length > 0 && annotation && conceptRanges) {
+            let listener = () => setupTextHighlighting(annotation, conceptRanges, wordFlags)
+            document.addEventListener('mouseup', listener)
+            return () => {
+                document.removeEventListener('mouseup', listener)
+            };
+        }
+    }, [annotation, wordFlags, conceptRanges]);
+
     const isNextDisabled = () => {
         if (idoc?.objects && objIntIdx !== undefined && annoIntIdx !== undefined) {
             let obj = idoc.objects[objIntIdx];
@@ -466,7 +529,7 @@ const AnnotationView: FC = () => {
 
     return (
         <Box height='100%'>
-            <Box height='54%'
+            <Box height='60%'
                  sx={{
                      p: 2, bgcolor: 'rgba(50, 50, 255, 0.08)',
                      border: '2px solid',
@@ -481,13 +544,14 @@ const AnnotationView: FC = () => {
                     {showFeats && bboxs && bboxs.flat()}
                 </Box>
             </Box>
-            <Box height='38%'
+            <Box height='32%' id="annoViewer"
                  sx={{
                      display: 'flex',
                      justifyContent: 'center',
                      alignItems: 'center',
                      bgcolor: 'rgba(50, 50, 255, 0.08)',
                      fontSize: '20px',
+                     border: '2px solid',
                      borderColor: 'divider',
                      my: 1
                  }}>

@@ -5,6 +5,10 @@ import {Annotation} from "../api/models/annotation";
 interface AnnotationPageState {
     annotationIdx: number | undefined;
     annotation: Annotation | undefined;
+    selectedConcept: number | undefined;
+    markedWords: number[];
+    wordFlags: boolean[] | undefined;
+    markedWordsPrevColors: string[] | undefined;
     conceptSubstrings: string[] | undefined;
     conceptRanges: [number, number][] | undefined;
     objImgUrl: string | undefined;
@@ -17,6 +21,10 @@ interface AnnotationPageState {
 const initialState: AnnotationPageState = {
     annotationIdx: undefined,
     annotation: undefined,
+    selectedConcept: undefined,
+    markedWords: [],
+    wordFlags: undefined,
+    markedWordsPrevColors: undefined,
     conceptSubstrings: undefined,
     conceptRanges: undefined,
     objImgUrl: undefined,
@@ -35,6 +43,21 @@ export const annotationPageSlice = createSlice({
         },
         setAnnotation: (state, action: PayloadAction<Annotation>) => {
             state.annotation = action.payload;
+        },
+        setSelectedConcept: (state, action: PayloadAction<number>) => {
+            state.selectedConcept = action.payload;
+        },
+        clearSelectedConcept: (state) => {
+            state.selectedConcept = undefined;
+        },
+        setWordFlags: (state, action: PayloadAction<boolean[]>) => {
+            state.wordFlags = action.payload;
+        },
+        setMarkedWords: (state, action: PayloadAction<number[]>) => {
+            state.markedWords = action.payload;
+        },
+        setPrevColors: (state, action: PayloadAction<string[]>) => {
+            state.markedWordsPrevColors = action.payload;
         },
         setConceptSubs: (state, action: PayloadAction<string[]>) => {
             state.conceptSubstrings = action.payload;
@@ -79,8 +102,9 @@ export const annotationPageSlice = createSlice({
 
 // actions
 export const {
-    setAnnotationIdx, setAnnotation, setConceptSubs, setConceptRanges,
-    setObjImgUrl, initVisibleFeatures, addVisibleFeature,
+    setAnnotationIdx, setAnnotation, setSelectedConcept, clearSelectedConcept,
+    setWordFlags, setMarkedWords, setPrevColors, setConceptSubs,
+    setConceptRanges, setObjImgUrl, initVisibleFeatures, addVisibleFeature,
     switchFeaturesVisible, switchFeatVisible, setFeatures,
 } = annotationPageSlice.actions;
 
