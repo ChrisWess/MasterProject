@@ -15,6 +15,7 @@ import LabelSelect from "./LabelSelector";
 import {clearObject, setObjectLabel} from "../reducers/objectSlice";
 import {clearDoc, disableAnnoMode} from "../reducers/idocSlice";
 import ListItemButton from "@mui/material/ListItemButton";
+import AddIcon from "@mui/icons-material/Add";
 
 
 export const getMappedLabel = (labelsMap: [string, Label][], labelId: string) => {
@@ -45,6 +46,20 @@ const ObjectControlPanel: FC = () => {
         if (objs && objIdx !== undefined) {
             let annos = objs[objIdx].annotations
             return (<List className="annotations" key="annoList">
+                <ListItemButton key={'newAnnoButt'} sx={{py: 0}}
+                                onClick={() => project && idoc && objIdx !== undefined &&
+                                    navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}/${objIdx}/newAnno`)}>
+                    <ListItem divider sx={{height: '60px'}} key={'newAnnoItem'}>
+                        <ListItemIcon sx={{color: 'text.secondary'}} key={'newAnnoIcon'}>
+                            <AddIcon/>
+                        </ListItemIcon>
+                        <ListItemText key={'newAnnoText'}>
+                            <Typography variant='inherit' color='primary.light'>
+                                <b>Add new Annotation</b>
+                            </Typography>
+                        </ListItemText>
+                    </ListItem>
+                </ListItemButton>
                 {annos?.map((anno, index) =>
                     <ListItemButton key={'annoButt' + index} sx={{py: 0}}
                                     onClick={() => {

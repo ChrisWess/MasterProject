@@ -143,9 +143,11 @@ const DocControlPanel: FC = () => {
 
     const objList = useMemo(() => {
         let objs = idoc?.objects;
-        // TODO: open a confirmation dialog when clicking object deletion
+        // TODO: open a confirmation dialog when clicking object deletion that also makes it possible to
+        //  to transfer annotations of the deleted object to another or a new object. If the user clicks
+        //  discard, the annotations should still be archived (bc it is some of our most valuable data in the DB)
         if (objs) {
-            return (<List className="projects" key="mainList">
+            return (<List className="objects" key="objMainList">
                 {objs?.map((obj, index) =>
                     <ListItem divider key={'objItem' + index}>
                         <ListItemButton key={'objButt' + index} sx={{py: 0}} onClick={() => {
@@ -174,19 +176,19 @@ const DocControlPanel: FC = () => {
                             </IconButton>
                         </ListItemIcon>
                     </ListItem>)}
-                <ListItem divider key={'newObjItem'}>
-                    <ListItemButton key={'newObjButt'} sx={{py: 0}} onClick={() => project && idoc &&
-                        navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}/newObj`)}>
+                <ListItemButton key={'newObjButt'} sx={{py: 0, height: '65px'}} onClick={() => project && idoc &&
+                    navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}/newObj`)}>
+                    <ListItem divider key={'newObjItem'} sx={{height: '65px'}}>
                         <ListItemIcon sx={{color: 'text.secondary', mr: 2}} key={'newObjIcon'}>
                             <AddIcon/>
                         </ListItemIcon>
                         <ListItemText key={'newObjText'}>
-                            <Typography variant='subtitle1' color='primary.light'>
+                            <Typography variant='h6' color='primary.light'>
                                 Add new Object
                             </Typography>
                         </ListItemText>
-                    </ListItemButton>
-                </ListItem>
+                    </ListItem>
+                </ListItemButton>
             </List>)
         }
     }, [idoc, labelsMap, objsVis])

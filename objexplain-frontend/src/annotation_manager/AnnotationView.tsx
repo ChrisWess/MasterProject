@@ -1,7 +1,7 @@
 import Box from '@mui/material/Box';
 import {useNavigate, useOutletContext, useParams} from "react-router-dom";
 import {getRequest} from "../api/requests";
-import {FC, useEffect, useMemo, useRef, useState} from "react";
+import {FC, useEffect, useMemo, useRef} from "react";
 import {useDispatch, useSelector} from "react-redux";
 import {ProjectStats} from "../api/models/project";
 import {setDoc, setImgUrl} from "../reducers/idocSlice";
@@ -13,12 +13,11 @@ import {setObject, setObjectIdx, setObjectLabel} from "../reducers/objectSlice";
 import {Annotation} from "../api/models/annotation";
 import AnnotationControlPanel from "./AnnotationControl";
 import {
+    clearPrevColors,
     clearSelectedConcept,
-    initVisibleFeatures,
+    extractConceptInfo,
     setAnnotation,
     setAnnotationIdx,
-    setConceptRanges,
-    setConceptSubs,
     setFeatures,
     setMarkedWords,
     setPrevColors,
@@ -57,7 +56,6 @@ const AnnotationView: FC = () => {
     const context: any = useOutletContext();
     const imgContainer = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const [hoverToggle, setHoverToggle] = useState<boolean>(true);
 
     const navigate = useNavigate();
     const dispatch = useDispatch();
@@ -70,12 +68,13 @@ const AnnotationView: FC = () => {
     const markedWords: number[] = useSelector((state: any) => state.annotation.markedWords);
     const wordFlags: boolean[] = useSelector((state: any) => state.annotation.wordFlags);
     const prevWordColors: string[] | undefined = useSelector((state: any) => state.annotation.markedWordsPrevColors);
-    const featsVis: boolean[] | undefined = useSelector((state: any) => state.annotation.featuresVis);
+    const featsVis: boolean[] = useSelector((state: any) => state.annotation.featuresVis);
     const showFeats: boolean = useSelector((state: any) => state.annotation.showFeatures);
-    const features: VisualFeature[] | undefined = useSelector((state: any) => state.annotation.features);
+    const features: (VisualFeature | string)[] = useSelector((state: any) => state.annotation.features);
     const conceptSubs: string[] | undefined = useSelector((state: any) => state.annotation.conceptSubstrings);
     const conceptRanges: [number, number][] | undefined = useSelector((state: any) => state.annotation.conceptRanges);
     const showConcepts: boolean = useSelector((state: any) => state.annotation.showConcepts);
+    const hoverToggle: boolean = useSelector((state: any) => state.annotation.showHoverText);
 
     let objIntIdx = objIdx ? parseInt(objIdx) : undefined;
     let objId = idoc?.objects && objIntIdx !== undefined ? idoc.objects[objIntIdx]._id : undefined
@@ -91,12 +90,14 @@ const AnnotationView: FC = () => {
             let imgHeight = imgContainer.current.offsetHeight
             if (imgHeight > 0) {
                 let ratio = imgHeight / idoc.height
-                return features.map((feat, index) => {
-                    if (featsVis[index]) {
+                return conceptSubs.map((conceptString, index) => {
+                    let feat = features[index]
+                    if (typeof feat !== 'string' && featsVis[index]) {
+                        let feature: VisualFeature = feat
                         let color = CONCEPT_COLORS[index % 10];
                         // Supply text only for first bbox (use the text part of the concept of current annotation)
-                        return feat.bboxs!.map((bbox, idx) => {
-                            let key = feat._id + '_' + idx;
+                        return feature.bboxs!.map((bbox, idx) => {
+                            let key = feature._id + '_' + idx;
                             if (idx === 0) {
                                 return <Box key={key} position='absolute' border='solid 5px'
                                             borderColor={color}
@@ -106,7 +107,7 @@ const AnnotationView: FC = () => {
                                             onClick={() => {
                                             }}>
                                     <Typography color={color} sx={{fontSize: '14px', ml: '4px'}}>
-                                        <b color={color}>{conceptSubs[index]}</b>
+                                        <b color={color}>{conceptString}</b>
                                     </Typography>
                                 </Box>
                             } else {
@@ -163,9 +164,11 @@ const AnnotationView: FC = () => {
             } else {
                 idx = parseInt(value.currentTarget.id.substring(1));
             }
-            dispatch(setMarkedWords(conceptRanges![idx]))
+            let range = conceptRanges![idx]
+            dispatch(setMarkedWords([range[0], range[1] + 1]))
             dispatch(setSelectedConcept(idx))
         }
+        dispatch(clearPrevColors())
     }
 
     const getStyle = function (element: any, property: string) {
@@ -296,7 +299,7 @@ const AnnotationView: FC = () => {
                                     annotation={annotation}
                                     color={CONCEPT_COLORS[currRange % 10]}/>
                                 <a key={idEnd + "-2"} id={idEnd} href="">]</a>
-                                <sub key={idEnd + "-3"} id={idEnd}>{currRange}</sub>
+                                <sub key={idEnd + "-3"} id={idEnd}>{currRange + 1}</sub>
                             </abbr>
                         </b>)
                 } else {
@@ -316,41 +319,7 @@ const AnnotationView: FC = () => {
             dispatch(setWordFlags(flags));
         }
         return buffer
-    }, [annotation, conceptRanges, markedWords])
-
-    const extractConceptInfo = (anno: Annotation) => {
-        let conceptStrings: string[] = []
-        let ranges: [number, number][] = []
-        let prevVal = -1
-        let currString = ''
-        for (let i = 0; i < anno.tokens.length; i++) {
-            let maskVal = anno.conceptMask[i];
-            if (maskVal >= 0) {
-                if (prevVal === -1 || prevVal === maskVal) {
-                    if (!currString) {
-                        ranges.push([i, -1])
-                    }
-                    let token = anno.tokens[i];
-                    if (currString.length === 0 || token === ',' || token === '.') {
-                        currString += token
-                    } else {
-                        currString += ' ' + token
-                    }
-                } else {
-                    conceptStrings.push(currString)
-                    ranges[ranges.length - 1][1] = i - 1
-                    currString = anno.tokens[i];
-                }
-            } else if (currString.length > 0) {
-                conceptStrings.push(currString)
-                ranges[ranges.length - 1][1] = i - 1
-                currString = '';
-            }
-            prevVal = maskVal;
-        }
-        dispatch(setConceptSubs(conceptStrings))
-        dispatch(setConceptRanges(ranges))
-    }
+    }, [annotation, conceptRanges, markedWords, hoverToggle])
 
     useEffect(() => {
         if (!projectName) {
@@ -404,13 +373,25 @@ const AnnotationView: FC = () => {
                     let currAnno = annotations[annoIntIdx];
                     if (!annotation || currAnno._id !== annotation._id) {
                         dispatch(setAnnotation(currAnno));
-                        extractConceptInfo(currAnno);
+                        dispatch(extractConceptInfo(currAnno));
                     }
                     loadVisualFeatures(currAnno._id).then(data => {
                         if (data) {
+                            let featArr: (VisualFeature | string)[] = []
                             let features = data.result
-                            dispatch(setFeatures(features))
-                            dispatch(initVisibleFeatures(features.length))
+                            if (currAnno.conceptIds.length > 0) {
+                                for (let i = 0; i < currAnno.conceptIds.length; i++) {
+                                    let cid = currAnno.conceptIds[i];
+                                    for (let j = 0; j < features.length; j++) {
+                                        let feat = features[j]
+                                        if (cid === feat.conceptId) {
+                                            featArr.push(feat)
+                                        }
+                                    }
+                                    featArr.push(cid)
+                                }
+                            }
+                            dispatch(setFeatures(featArr))
                         }
                     });
                 } else {
@@ -431,15 +412,12 @@ const AnnotationView: FC = () => {
             if (anchor && nfocus && nfocus.nodeType === 3 && anchor.nodeType === 3) {
                 let startElem = anchor.parentElement
                 let endElem = nfocus.parentElement
-                if (startElem?.id === '') {
-                    startElem = startElem.parentElement
+                if (startElem?.id === '' && startElem.parentElement) {
+                    startElem = startElem.parentElement.parentElement
                 }
-                if (endElem?.id === '') {
-                    endElem = endElem.parentElement
+                if (endElem?.id === '' && endElem.parentElement) {
+                    endElem = endElem.parentElement.parentElement
                 }
-                // FIXME: there should be no selection that is only inside of a concept
-                console.log(startElem?.id)
-                console.log(endElem?.id)
                 let annoViewer = document.getElementById("annoViewer")
                 if (startElem && endElem && annoViewer && startElem.id.startsWith("w") && endElem.id.startsWith("w")
                     && annoViewer.contains(startElem) && annoViewer.contains(endElem)) {
@@ -553,7 +531,7 @@ const AnnotationView: FC = () => {
                      fontSize: '20px',
                      border: '2px solid',
                      borderColor: 'divider',
-                     my: 1
+                     my: 1, px: 5,
                  }}>
                 <Box>
                     {highlightedAnnotation}

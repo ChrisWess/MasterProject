@@ -151,3 +151,18 @@ def update_concept():
         err_msg = "The Annotation ID you provided is not a valid ID!"
         application.logger.error(err_msg)
         abort(404, err_msg)
+
+
+@application.route('/annotation/<anno_id>/removeConcept/<int:concept_idx>', methods=['DELETE'])
+def remove_concept(anno_id, concept_idx):
+    try:
+        response = AnnotationDAO().remove_concept(ObjectId(anno_id), concept_idx, generate_response=True)
+        if response is None:
+            err_msg = "Operation failed! The provided concept index is not in the legal range of indices!"
+            application.logger.error(err_msg)
+            abort(400, err_msg)
+        return response
+    except InvalidId:
+        err_msg = "The Annotation ID you provided is not a valid ID!"
+        application.logger.error(err_msg)
+        abort(404, err_msg)

@@ -380,6 +380,28 @@ class AnnotationDAO(JoinableDAO):
             for i in range(start, stop):
                 mask[i] = 0
 
+    def _concept_update(self, anno_id, mask, concepts, generate_response, db_session):
+        self._query_matcher['objects.annotations._id'] = anno_id
+        self._set_field_op['objects.$[].annotations.$[x].conceptMask'] = mask
+        self._set_field_op['objects.$[].annotations.$[x].conceptIds'] = concepts
+        self._set_field_op['objects.$[].annotations.$[x].updatedAt'] = datetime.now()
+        self._update_commands['$set'] = self._set_field_op
+        self._field_check['x._id'] = anno_id
+        self._array_filters.append(self._field_check)
+        result = self.collection.update_one(self._query_matcher, self._update_commands,
+                                            array_filters=self._array_filters, session=db_session)
+        self._array_filters.clear()
+        self._field_check.clear()
+        self._update_commands.clear()
+        self._set_field_op.clear()
+        self._query_matcher.clear()
+        if generate_response:
+            result = self.to_response(result, BaseDAO.UPDATE)
+            for i, cid in enumerate(concepts):
+                concepts[i] = str(cid)
+            result['result'] = {'newMask': mask, 'newConcepts': concepts}
+        return result
+
     def add_or_update_concept_at_range(self, anno_id, token_range, generate_response=False, db_session=None):
         """
         Add a `Concept` with the given key or Id to the specified `Annotation` at the given range of tokens
@@ -404,21 +426,55 @@ class AnnotationDAO(JoinableDAO):
         assert stop <= len(mask)
         concepts = anno['conceptIds']
         self._update_concept_mask(cid, concepts, mask, start, stop)
-        self._query_matcher['objects.annotations._id'] = anno_id
-        self._set_field_op['objects.$[].annotations.$[x].conceptMask'] = mask
-        self._set_field_op['objects.$[].annotations.$[x].conceptIds'] = concepts
-        self._set_field_op['objects.$[].annotations.$[x].updatedAt'] = datetime.now()
-        self._update_commands['$set'] = self._set_field_op
-        self._field_check['x._id'] = anno_id
-        self._array_filters.append(self._field_check)
-        result = self.collection.update_one(self._query_matcher, self._update_commands,
-                                            array_filters=self._array_filters, session=db_session)
-        self._array_filters.clear()
-        self._field_check.clear()
-        self._update_commands.clear()
-        self._set_field_op.clear()
-        self._query_matcher.clear()
-        return self.to_response(result, BaseDAO.UPDATE) if generate_response else result
+        return self._concept_update(anno_id, mask, concepts, generate_response, db_session)
+
+    def remove_concept(self, anno_id, concept_idx, generate_response=False, db_session=None):
+        """
+        Add a `Concept` with the given key or Id to the specified `Annotation` at the given range of tokens
+        :param anno_id: Id of the annotation
+        :param concept_idx: index of the concept to remove
+        :param generate_response:
+        :param db_session:
+        :return: Update result
+        """
+        anno = self.find_by_nested_id(anno_id, projection=('conceptMask', 'conceptIds'))
+        if anno is None:
+            return None
+        mask = anno['conceptMask']
+        concepts = anno['conceptIds']
+        if not (0 <= concept_idx < len(concepts)):
+            return None
+        del concepts[concept_idx]
+        is_removing = None
+        if len(concepts) == 0:
+            for i in range(len(mask)):
+                mask[i] = -1
+        elif concept_idx == len(concepts):
+            for i, val in reversed(tuple(enumerate(mask))):
+                if val == -1:
+                    if is_removing:
+                        break
+                    continue
+                if val == concept_idx:
+                    mask[i] = -1
+                    is_removing = True
+                else:
+                    break
+        else:
+            for i, val in enumerate(mask):
+                if val == -1:
+                    if is_removing:
+                        is_removing = False
+                    continue
+                if val == concept_idx:
+                    mask[i] = -1
+                    is_removing = True
+                elif is_removing:
+                    is_removing = False
+                    mask[i] = val - 1
+                elif is_removing is False:
+                    mask[i] = val - 1
+        return self._concept_update(anno_id, mask, concepts, generate_response, db_session)
 
     @dao_update(update_many=False)
     def add_concept_nouns_specified(self, anno_id, token_range, noun_token_idxs):

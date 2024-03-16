@@ -43,11 +43,12 @@ const HoverBox: FC<HoverBoxProps> = ({word, annotation, conceptIdx, hovertoggle,
 
     const [hover, setHover] = useState(false)
 
-    const normalStyle = {
+    const hiddenStyle = {
         display: 'none'
     }
 
     const onMouseEnter = (e: any) => {
+        e.preventDefault()
         if (hovertoggle) {
             setHover(true)
         }
@@ -59,7 +60,7 @@ const HoverBox: FC<HoverBoxProps> = ({word, annotation, conceptIdx, hovertoggle,
 
     return (
         <>
-            <a style={hover ? hoverStyle : normalStyle}>Marked
+            <a style={hover ? hoverStyle : hiddenStyle}>Marked
                 Concept: {conceptIdx} Author: {annotation.autoCreated ? "Machine" : "User"}</a>
             <a style={{fontSize: '1em', color: 'none', padding: '0px 2px 0px 2px', marginTop: '6px', zIndex: '1'}}
                onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>

@@ -12,6 +12,7 @@ import docReducer from "./reducers/idocSlice"
 import objectPageReducer from "./reducers/objectSlice"
 import newObjectPageReducer from "./reducers/objectCreateSlice"
 import annotationPageReducer from "./reducers/annotationSlice";
+import newAnnotationPageReducer from "./reducers/annotationCreateSlice";
 
 
 const store = configureStore({
@@ -23,6 +24,7 @@ const store = configureStore({
         object: objectPageReducer,
         newObj: newObjectPageReducer,
         annotation: annotationPageReducer,
+        newAnno: newAnnotationPageReducer,
     }
 })
 
