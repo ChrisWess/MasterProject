@@ -221,7 +221,8 @@ const ProjectIDocPage: FC = () => {
     }, [projectName]);
 
     useEffect(() => {
-        if (doc && project && !imgUrl) {
+        if (doc && project) {
+            dispatch(setTitle(doc.name));
             loadDocImage(doc._id).then(file => {
                 if (file) {
                     doc.objects && dispatch(initVisibleObjs(doc.objects.length));
@@ -233,16 +234,15 @@ const ProjectIDocPage: FC = () => {
                 }
             });
         }
-    }, [doc, project, imgUrl]);
+    }, [doc?._id, project?.title]);
 
     useEffect(() => {
-        context.setControlPanel(<DocControlPanel/>);
         if (idoc) {
-            dispatch(setTitle(idoc.name));
             dispatch(setDoc(idoc))
         } else {
             navigate('/notfound404')
         }
+        context.setControlPanel(<DocControlPanel/>);
     }, []);
 
     return (

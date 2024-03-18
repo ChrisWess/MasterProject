@@ -1,22 +1,23 @@
 import * as d3 from "d3";
 import {ZoomBehavior} from "d3";
-import {FC, RefObject, useCallback, useEffect, useMemo, useRef, useState} from "react";
+import {FC, RefObject, useCallback, useEffect, useMemo, useRef} from "react";
 import {useDispatch, useSelector} from "react-redux";
-import BoundingBox from "./BBox";
-import BBoxText from "./BBoxText";
-import {DetectedObject} from "../../api/models/object";
-import {ImageDocument} from "../../api/models/imgdoc";
-import {setBbox} from "../../reducers/objectCreateSlice";
-import {Label} from "../../api/models/label";
-import {BBOX_COLORS} from "../../document/ProjectIDocPage";
+import BoundingBox from "../object_annotator/image_labeling/BBox";
+import BBoxText from "../object_annotator/image_labeling/BBoxText";
+import {BoundingBoxCoords} from "../api/models/feature";
+import {DetectedObject} from "../api/models/object";
+import {setCurrBbox} from "../reducers/featureSlice";
+import {CONCEPT_COLORS} from "../annotation_manager/AnnotationView";
 
-interface ImageAnnotatorProps {
+
+interface FeatureAnnotatorProps {
+    objImgUrl: string;
     svgRef: RefObject<SVGSVGElement>;
     zoom: ZoomBehavior<SVGSVGElement, unknown>;
     height: number;
 }
 
-const ImageAnnotator: FC<ImageAnnotatorProps> = ({svgRef, zoom, height}) => {
+const FeatureAnnotator: FC<FeatureAnnotatorProps> = ({objImgUrl, svgRef, zoom, height}) => {
     const gZoomRef = useRef<SVGGElement>(null);
     const gDragRef = useRef<SVGGElement>(null);
     const rectRef = useRef<SVGRectElement>(null);
@@ -24,36 +25,24 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({svgRef, zoom, height}) => {
 
     // global state (redux)
     const dispatch = useDispatch();
-    const labelsMap: [string, Label][] | undefined = useSelector((state: any) => state.iDoc.labelMap);
-    const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
-    const imgUrl: string | undefined = useSelector((state: any) => state.iDoc.imgUrl);
-    const showObjs: boolean = useSelector((state: any) => state.newObj.showCurrObjs);
-    const isMoveImg: boolean = useSelector((state: any) => state.newObj.isMoveImg);
+    const detObj: DetectedObject | undefined = useSelector((state: any) => state.object.detObj);
+    const conceptIdx: number | undefined = useSelector((state: any) => state.feature.conceptIdx);
+    const prevBboxs: BoundingBoxCoords[] | undefined = useSelector((state: any) => state.feature.bboxs);
+    const bboxsVis: boolean[] = useSelector((state: any) => state.feature.bboxsVis);
+    const showPrevBboxs: boolean = useSelector((state: any) => state.feature.showPrevInput);
+    const isMoveImg: boolean = useSelector((state: any) => state.feature.isMoveObjImg);
 
-    const [selectedBbox, setSelectedBbox] = useState<DetectedObject | null>(null);
-
-    const handleRightClick = useCallback((event: any, obj: DetectedObject) => {
-            event.preventDefault();
-            const rect = event.target.getBoundingClientRect();
-            const bbox_repr = {
-                tlx: rect.left, tly: rect.top,
-                brx: rect.left + rect.width,
-                bry: rect.top + rect.height,
-            };
-            // TODO: dispatch
-            setSelectedBbox(obj);
-        }, [],
-    );
-
+    let origWidth = detObj ? detObj.brx - detObj.tlx : 0
+    let origHeight = detObj ? detObj.bry - detObj.tly : 0
     let pixelHeight = Math.max(500, height)
     let pixelWidth: number = svgRef.current ? svgRef.current.width.baseVal.value : 0
+    let imgRatio = origWidth / origHeight
     let imgHeight = Math.max(500, height - (height / 10))
-    let imgRatio = idoc ? idoc.width / idoc.height : 0
     let imgWidth = imgRatio * imgHeight
     let borderDistHeight = (pixelHeight - imgHeight) / 2
     let borderDistWidth: number = (pixelWidth / 2) - (imgWidth / 2)
-    let widthRatio = idoc ? idoc.width / (pixelWidth - 2 * borderDistWidth) : 0
-    let heightRatio = idoc ? idoc.height / (pixelHeight - 2 * borderDistHeight) : 0
+    let widthRatio = origWidth / (pixelWidth - 2 * borderDistWidth)
+    let heightRatio = origHeight / (pixelHeight - 2 * borderDistHeight)
 
     // drag handling
     const drag = useMemo(() => d3.drag<SVGGElement, unknown>(), []);
@@ -115,20 +104,20 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({svgRef, zoom, height}) => {
         const height = parseInt(myRect.attr("height"));
 
         // only keep the bbox if it is big enough
-        if (idoc && width > 10 && height > 10) {
+        if (detObj && width > 10 && height > 10) {
             // pixelWidth = 2 * borderDistWidth
             const left = parseInt(myRect.attr("x")) - borderDistWidth;
             const top = parseInt(myRect.attr("y")) - borderDistHeight;
             // map screen coordinates to the original image pixels
             let mappedLeft = Math.floor(Math.max(0, left * widthRatio));
             let mappedTop = Math.floor(Math.max(0, top * heightRatio));
-            let mappedRight = Math.ceil(Math.min(idoc.width, mappedLeft + (width * widthRatio)));
-            let mappedBottom = Math.ceil(Math.min(idoc.height, mappedTop + (height * heightRatio)));
-            const bbox_repr = {
+            let mappedRight = Math.ceil(Math.min(origWidth, mappedLeft + (width * widthRatio)));
+            let mappedBottom = Math.ceil(Math.min(origHeight, mappedTop + (height * heightRatio)));
+            const bbox_repr: BoundingBoxCoords = {
                 tlx: mappedLeft, tly: mappedTop,
                 brx: mappedRight, bry: mappedBottom,
             };
-            dispatch(setBbox(bbox_repr))
+            dispatch(setCurrBbox(bbox_repr))
         } else {
             resetRect();
         }
@@ -162,47 +151,37 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({svgRef, zoom, height}) => {
         }
     };
 
-    const getMappedLabel = (labelId: string) => {
-        if (labelsMap) {
-            for (let i = 0; i < labelsMap.length; i++) {
-                if (labelsMap[i][0] === labelId) {
-                    return labelsMap[i][1]
-                }
-            }
-        }
-        return undefined
-    }
-
     const bboxs = useMemo(() => {
-        if (idoc?.objects && pixelWidth !== 0) {
-            return idoc.objects.map((obj: DetectedObject, index: number) => {
-                let tlx = (obj.tlx / widthRatio) + borderDistWidth;
-                let tly = (obj.tly / heightRatio) + borderDistHeight;
-                let brx = (obj.brx / widthRatio) + borderDistWidth;
-                let bry = (obj.bry / heightRatio) + borderDistHeight;
-                let label = getMappedLabel(obj.labelId);
-                return (<g key={'annoBbox' + index}>
-                    <BoundingBox key={'bboxRect' + index} objIdx={index} opacity={0.3}
-                                 tlx={tlx} tly={tly} brx={brx} bry={bry} color={BBOX_COLORS[index]}
-                                 onContextMenu={(e) => handleRightClick(e, obj)}/>
-                    <BBoxText
-                        key={'bboxText' + index}
-                        text={labelsMap && label ? label.name : 'Placeholder'}
-                        tlx={tlx} tly={tly} brx={brx} bry={bry}
-                        onContextMenu={(e) => handleRightClick(e, obj)}
-                        fontSize={Math.max(21, height / 30)}
-                    />
-                </g>)
+        if (prevBboxs && pixelWidth !== 0 && showPrevBboxs && conceptIdx !== undefined) {
+            return prevBboxs.map((bbox: BoundingBoxCoords, index: number) => {
+                if (bboxsVis[index]) {
+                    let tlx = (bbox.tlx / widthRatio) + borderDistWidth;
+                    let tly = (bbox.tly / heightRatio) + borderDistHeight;
+                    let brx = (bbox.brx / widthRatio) + borderDistWidth;
+                    let bry = (bbox.bry / heightRatio) + borderDistHeight;
+                    return (<g key={'annoBbox' + index}>
+                        <BoundingBox key={'bboxRect' + index} objIdx={index} opacity={0.3}
+                                     color={CONCEPT_COLORS[conceptIdx]}
+                                     tlx={tlx} tly={tly} brx={brx} bry={bry}/>
+                        <BBoxText
+                            key={'bboxText' + index}
+                            text={(index + 1).toString()}
+                            tlx={tlx} tly={tly} brx={brx} bry={bry}
+                            fontSize={Math.max(21, height / 30)}
+                        />
+                    </g>)
+                }
+                return <></>
             })
         }
         return <></>
-    }, [idoc?.objects, showObjs, labelsMap, pixelWidth])
+    }, [prevBboxs, showPrevBboxs, pixelWidth])
 
     useEffect(() => {
         if (svgRef.current) {
             setupZoom();
         }
-    }, [zoom, svgRef, handleZoom, isMoveImg]);
+    }, [zoom, svgRef.current, handleZoom, isMoveImg]);
 
     return (
         <svg
@@ -213,7 +192,7 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({svgRef, zoom, height}) => {
         >
             <g ref={gZoomRef}>
                 <g ref={gDragRef} style={{cursor: isMoveImg ? "move" : "crosshair"}}>
-                    <image ref={imgRef} href={imgUrl} style={{outline: "1px solid black", height: imgHeight + 'px'}}
+                    <image ref={imgRef} href={objImgUrl} style={{outline: "1px solid black", height: imgHeight + 'px'}}
                            x={borderDistWidth} y={borderDistHeight}/>
                     <rect
                         ref={rectRef}
@@ -223,10 +202,10 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({svgRef, zoom, height}) => {
                         fill={"transparent"}
                     ></rect>
                 </g>
-                {showObjs && bboxs}
+                {bboxs}
             </g>
         </svg>
     );
 }
 
-export default ImageAnnotator;
+export default FeatureAnnotator;

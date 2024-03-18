@@ -25,15 +25,16 @@ import {
     setAnnotation,
     switchFeaturesVisible,
     switchFeatVisible,
-    toggleHoverText
+    toggleConceptExpanded,
+    toggleHoverText,
+    toggleShowConcepts
 } from "../reducers/annotationSlice";
-import {deleteRequest, putRequest} from "../api/requests";
+import {deleteRequest, getRequest, putRequest} from "../api/requests";
 import {Annotation} from "../api/models/annotation";
 import {CONCEPT_COLORS} from "./AnnotationView";
 import {VisualFeature} from "../api/models/feature";
 import ListItemButton from "@mui/material/ListItemButton";
 import LabelIcon from "@mui/icons-material/Label";
-import {BBOX_COLORS} from "../document/ProjectIDocPage";
 import ListItemText from "@mui/material/ListItemText";
 import VisibilityOffOutlinedIcon from "@mui/icons-material/VisibilityOffOutlined";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
@@ -43,6 +44,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 const AnnotationControlPanel: FC = () => {
     const [alertContent, setAlertContent] = useState<string>();
     const [alertSeverity, setAlertSeverity] = useState<string>();
+    const [conceptInfo, setConceptInfo] = useState<any>();
 
     const navigate = useNavigate();
     const dispatch = useDispatch();
@@ -56,7 +58,8 @@ const AnnotationControlPanel: FC = () => {
     const markedWords: number[] = useSelector((state: any) => state.annotation.markedWords);
     const conceptSubstrings: string[] | undefined = useSelector((state: any) => state.annotation.conceptSubstrings);
     const features: (VisualFeature | string)[] = useSelector((state: any) => state.annotation.features);
-    const featsVis: boolean[] = useSelector((state: any) => state.annotation.features);
+    const featuresVis: boolean[] = useSelector((state: any) => state.annotation.featuresVis);
+    const isConceptExpanded: boolean = useSelector((state: any) => state.annotation.isConceptExpanded);
 
     const toProjectView = () => {
         if (project) {
@@ -77,19 +80,24 @@ const AnnotationControlPanel: FC = () => {
     const featureList = useMemo(() => {
         // TODO: open a confirmation dialog when clicking feature deletion that also makes it possible to
         //  to transfer bboxs of the deleted feature to another or a new concept.
-        if (conceptSubstrings) {
+        if (features && conceptSubstrings) {
+            console.log(features)
             return <List className="features" key="featureList">
                 {features.map((feature, index) => {
                     if (typeof feature === 'string') {
                         // TODO: ListItemButton of concepts without feature should delegate to feature annotation
                         return <ListItem divider key={'featureItem' + index}>
-                            <ListItemButton key={'featureButt' + index} sx={{py: 0}}>
+                            <ListItemButton key={'featureButt' + index} sx={{py: 0}} onClick={() => {
+                                if (project && idoc) {
+                                    navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}/${objIdx}/${annoIdx}/${index}`)
+                                }
+                            }}>
                                 <ListItemIcon sx={{color: 'text.secondary', mr: 2}} key={'featureIcon' + index}>
                                     <LabelIcon sx={{color: CONCEPT_COLORS[index % 10], mr: 2}}/>
                                 </ListItemIcon>
                                 <ListItemText key={'featureText' + index}>
                                     <Typography sx={{fontSize: '14pt', color: 'text.secondary'}}>
-                                        New Feature Annotation of Concept <b>{index + 1}</b>
+                                        Add Feature Annotation of Concept <b>{index + 1}</b>
                                     </Typography>
                                 </ListItemText>
                             </ListItemButton>
@@ -105,12 +113,12 @@ const AnnotationControlPanel: FC = () => {
                     } else {
                         return <ListItem divider key={'featureItem' + index}>
                             <ListItemButton key={'featureButt' + index} sx={{py: 0}} onClick={() => {
-                                if (project && idoc && objIdx !== undefined) {
-                                    navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}/${objIdx}/TODO`)
+                                if (project && idoc) {
+                                    navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}/${objIdx}/${annoIdx}/${index}`)
                                 }
                             }}>
                                 <ListItemIcon sx={{color: 'text.secondary', mr: 2}} key={'featureIcon' + index}>
-                                    <LabelIcon sx={{color: BBOX_COLORS[index % 10], mr: 2}}/> {index + 1}
+                                    <LabelIcon sx={{color: CONCEPT_COLORS[index % 10], mr: 2}}/> {index + 1}
                                 </ListItemIcon>
                                 <ListItemText key={'featureText' + index}>
                                     <Typography variant='h6' color='primary.light'>
@@ -121,7 +129,7 @@ const AnnotationControlPanel: FC = () => {
                             <ListItemIcon>
                                 <IconButton onClick={() => dispatch(switchFeatVisible(index))}
                                             sx={{color: 'text.secondary'}}>
-                                    {featsVis[index] ?
+                                    {featuresVis[index] ?
                                         <VisibilityOffOutlinedIcon/> :
                                         <VisibilityOutlinedIcon/>}
                                 </IconButton>
@@ -135,7 +143,7 @@ const AnnotationControlPanel: FC = () => {
             </List>
         }
         return <></>
-    }, [conceptSubstrings, features, featsVis])
+    }, [conceptSubstrings, features, featuresVis])
 
     const addUpdateConceptDynamic = () => {
         annotation && putRequest('/annotation',
@@ -148,15 +156,14 @@ const AnnotationControlPanel: FC = () => {
                 let result = data.result
                 let newConcepts = result.newConcepts
                 if (conceptSubstrings && newConcepts.length > conceptSubstrings.length) {
-                    let idx = -1
                     for (let i = 0; i < newConcepts.length; i++) {
                         let annoConcept = annotation.conceptIds[i]
-                        if (annoConcept !== newConcepts[i]) {
-                            idx = i;
+                        let newConcept = newConcepts[i]
+                        if (annoConcept !== newConcept) {
+                            dispatch(addConceptAt([i, newConcept]))
                             break;
                         }
                     }
-                    dispatch(addConceptAt(idx))
                 }
                 let anno = {
                     ...annotation, conceptMask: result.newMask, conceptIds: newConcepts
@@ -182,12 +189,36 @@ const AnnotationControlPanel: FC = () => {
             })
     }
 
-    // TODO: make another switch button for opening up a display for additional concept info (key, phraseWords, timestamps, convFilterIdx when implemented)
-    // TODO: make a list for the features with the option to annotate new visual cues corresponding to the concepts
+    const expandedConcept = useMemo(() => {
+        if (isConceptExpanded && conceptInfo) {
+            return <>
+                <Divider sx={{mt: 1}}/>
+                <Box height='130px'
+                     sx={{bgcolor: 'rgba(50, 50, 255, 0.08)', border: '2px solid', borderColor: 'divider', p: 1}}>
+                    <Typography variant='h6' color='text.secondary'>{'Concept Key: '}<span
+                        style={{color: 'white'}}>"{conceptInfo.key}"</span></Typography>
+                    <Typography variant='h6' color='text.secondary'>{'Phrase Words: '}<span
+                        style={{color: 'white'}}>{'(' + conceptInfo.phraseWords.join(', ') + ')'}</span></Typography>
+                    <Typography sx={{color: 'text.secondary'}} variant='caption'>Created
+                        At: <span style={{color: 'white'}}>{conceptInfo.createdAt}</span></Typography><br/>
+                    <Typography sx={{mb: 2, color: 'text.secondary'}} variant='caption'>Last
+                        Edit: &nbsp;&nbsp; <span style={{color: 'white'}}>{conceptInfo.updatedAt}</span></Typography>
+                </Box>
+            </>
+        }
+        return <></>
+    }, [isConceptExpanded, conceptInfo])
+
+    const fetchConcept = (conceptId: string) => {
+        return getRequest('concept', conceptId,
+            {key: 1, phraseWords: 1, updatedAt: 1, createdAt: 1, convFilterIdx: 1})
+    }
 
     useEffect(() => {
-
-    }, []);
+        if (selectedConcept !== undefined && annotation?.conceptIds && isConceptExpanded) {
+            fetchConcept(annotation.conceptIds[selectedConcept]).then(data => data && setConceptInfo(data.result))
+        }
+    }, [selectedConcept, annotation, isConceptExpanded]);
 
     return (
         <Box sx={{height: '100%', overflow: 'auto'}}>
@@ -200,10 +231,15 @@ const AnnotationControlPanel: FC = () => {
             <Typography sx={{mb: 1, color: 'text.secondary'}}
                         variant='h5'>Annotation {annoIdx === undefined ? -1 : annoIdx + 1}</Typography>
             <FormGroup row sx={{ml: 1}}>
+                <FormControlLabel control={<Switch defaultChecked onChange={() => dispatch(toggleShowConcepts())}/>}
+                                  label="Show Concepts" sx={{mr: 16}}/>
                 <FormControlLabel control={<Switch defaultChecked onChange={() => dispatch(switchFeaturesVisible())}/>}
-                                  label="Show Features" sx={{mr: 6}}/>
+                                  label="Show Features"/>
                 <FormControlLabel control={<Switch defaultChecked onChange={() => dispatch(toggleHoverText())}/>}
                                   label="Hover Info above Concepts" sx={{mr: 6}}/>
+                <FormControlLabel
+                    control={<Switch defaultChecked={false} onChange={() => dispatch(toggleConceptExpanded())}/>}
+                    label="Expand Concept Info"/>
             </FormGroup>
             <Divider sx={{my: 1}}/>
             <Typography variant={'h6'} sx={{mb: 1, pt: 1}}>Concept {selectedConcept !== undefined &&
@@ -238,6 +274,7 @@ const AnnotationControlPanel: FC = () => {
                     onClick={removeConcept}>
                 Remove Concept (Backspace Key)
             </Button>
+            {expandedConcept}
             <Divider sx={{mt: 3}}/>
             <Box sx={{overflow: 'auto', maxHeight: 300}}>{featureList}</Box>
             <AlertMessage content={alertContent} setContent={setAlertContent} severity={alertSeverity}

@@ -159,7 +159,7 @@ class ObjectDAO(JoinableDAO):
         crop = Image.open(BytesIO(img)).crop(bbox)
         img_io = BytesIO()
         crop.save(img_io, format='JPEG')
-        return img_io.getvalue() if as_bytes else img_io
+        return img_io.getvalue() if as_bytes else BytesIO(img_io.getvalue())
 
     def find_all_object_imgs(self, doc_id, db_session=None):
         """

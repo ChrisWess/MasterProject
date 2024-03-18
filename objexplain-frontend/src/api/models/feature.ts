@@ -1,6 +1,6 @@
 import {User} from "./user";
 
-export type BoundingBox = {
+export type BoundingBoxCoords = {
     /**
      * Top left x-coordinate of the bounding box
      */
@@ -39,7 +39,7 @@ export type VisualFeature = {
     /**
      * The bounding boxes that mark the concept's area in the object
      */
-    bboxs: BoundingBox[] | undefined;
+    bboxs: BoundingBoxCoords[] | undefined;
     /**
      * The ID of the user that selected the feature
      */

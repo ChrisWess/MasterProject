@@ -1,4 +1,4 @@
-import io
+from io import BytesIO
 from json import loads
 
 from bson import ObjectId
@@ -34,7 +34,7 @@ def get_image(doc_id=None):
             err_msg = f"No image with ID {doc_id} could be found!"
             application.logger.error(err_msg)
             abort(404, err_msg)
-        image = io.BytesIO(image)
+        image = BytesIO(image)
         response = make_response(send_file(image, mimetype='image/jpeg'))
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response

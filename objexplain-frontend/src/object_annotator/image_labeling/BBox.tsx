@@ -1,5 +1,4 @@
 import React from "react";
-import {BBOX_COLORS} from "../../document/ProjectIDocPage";
 
 interface BBoxProps {
     objIdx: number;
@@ -8,10 +7,11 @@ interface BBoxProps {
     brx: number;
     bry: number;
     opacity: number;
-    onContextMenu: (e: React.MouseEvent<SVGRectElement, MouseEvent>, bbox: number[]) => void;
+    color: string;
+    onContextMenu?: (e: React.MouseEvent<SVGRectElement, MouseEvent>, bbox: number[]) => void;
 }
 
-function BoundingBox({objIdx, tlx, tly, brx, bry, opacity, onContextMenu}: BBoxProps) {
+function BoundingBox({objIdx, tlx, tly, brx, bry, opacity, color, onContextMenu}: BBoxProps) {
     let bboxIdx = objIdx % 10;
 
     return (
@@ -21,11 +21,11 @@ function BoundingBox({objIdx, tlx, tly, brx, bry, opacity, onContextMenu}: BBoxP
             y={tly}
             width={brx - tlx}
             height={bry - tly}
-            stroke={BBOX_COLORS[bboxIdx]}
+            stroke={color}
             opacity={opacity}
             strokeWidth={3}
             fill={"transparent"}
-            onContextMenu={(e) => onContextMenu(e, [tlx, tly, brx, bry])}
+            onContextMenu={(e) => onContextMenu && onContextMenu(e, [tlx, tly, brx, bry])}
         />
     );
 }

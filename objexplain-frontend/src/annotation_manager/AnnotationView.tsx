@@ -47,7 +47,6 @@ export const CONCEPT_COLORS = [
 
 
 export const loadVisualFeatures = async (annoId: string) => {
-    // TODO: load features with expanded concept?
     return await getRequest('visFeature/annotation', annoId)
 }
 
@@ -77,7 +76,6 @@ const AnnotationView: FC = () => {
     const hoverToggle: boolean = useSelector((state: any) => state.annotation.showHoverText);
 
     let objIntIdx = objIdx ? parseInt(objIdx) : undefined;
-    let objId = idoc?.objects && objIntIdx !== undefined ? idoc.objects[objIntIdx]._id : undefined
     let annoIntIdx = annoIdx ? parseInt(annoIdx) : undefined;
 
     /**
@@ -105,6 +103,7 @@ const AnnotationView: FC = () => {
                                             width={ratio * (bbox.brx - bbox.tlx) + 10}
                                             height={ratio * (bbox.bry - bbox.tly) + 10}
                                             onClick={() => {
+                                                // TODO
                                             }}>
                                     <Typography color={color} sx={{fontSize: '14px', ml: '4px'}}>
                                         <b color={color}>{conceptString}</b>
@@ -116,6 +115,7 @@ const AnnotationView: FC = () => {
                                             width={ratio * (bbox.brx - bbox.tlx) + 10}
                                             height={ratio * (bbox.bry - bbox.tly) + 10}
                                             onClick={() => {
+                                                // TODO
                                             }}/>
                             }
                         })
@@ -259,49 +259,69 @@ const AnnotationView: FC = () => {
                     }
                 } else if (i === idxEnd) {
                     let id = 'w' + idxStart
-                    let idEnd = "w" + idxEnd;
                     let currentId = 'c' + currRange;
-                    buffer.push(
-                        <b key={currentId} id={currentId} onClick={setNewConceptSelection}>
+                    if (idxStart === idxEnd) {
+                        buffer.push(<b key={currentId} id={currentId} onClick={setNewConceptSelection}>
                             {" "}
-                            <abbr key={id + "-1"} id={id} className={"cr cr-" + currRange}
-                                  style={{backgroundColor: CONCEPT_COLORS[currRange % 10]}}>
-                                <a key={id + "-2"} id={id} href="">[</a>
+                            <abbr
+                                key={id + "-1"}
+                                id={id}
+                                className={"cr cr-" + currRange}>
+                                <a key={id + "-2"} id={id + '-open'} href="">[</a>
                                 <HoverBox
                                     word={tokens[idxStart]}
                                     conceptIdx={currRange}
                                     hovertoggle={hoverToggle}
                                     annotation={annotation}
                                     color={CONCEPT_COLORS[currRange % 10]}/>
+                                <a key={id + "-4"} id={id + '-close'} href="">]</a>
+                                <sub key={id + "-5"} id={id + '-nr'}>{currRange + 1}</sub>
                             </abbr>
-                            {tokens.slice(idxStart + 1, idxEnd).map((elem, index) => {
-                                let tokenIdx = idxStart + index + 1
-                                return <abbr key={'w' + tokenIdx + "-1"}
-                                             id={'w' + tokenIdx}
-                                             className={"cr cr-" + currRange}
-                                             style={{backgroundColor: CONCEPT_COLORS[currRange % 10]}}>
-                                    {flags[tokenIdx] && " "}
+                        </b>)
+                    } else {
+                        let idEnd = "w" + idxEnd;
+                        buffer.push(
+                            <b key={currentId} id={currentId} onClick={setNewConceptSelection}>
+                                {" "}
+                                <abbr key={id + "-1"} id={id} className={"cr cr-" + currRange}
+                                      style={{backgroundColor: CONCEPT_COLORS[currRange % 10]}}>
+                                    <a key={id + "-2"} id={id + '-open'} href="">[</a>
                                     <HoverBox
-                                        word={elem}
+                                        word={tokens[idxStart]}
                                         conceptIdx={currRange}
                                         hovertoggle={hoverToggle}
                                         annotation={annotation}
                                         color={CONCEPT_COLORS[currRange % 10]}/>
                                 </abbr>
-                            })}
-                            <abbr key={idEnd + "-1"} id={idEnd} className={"cr cr-" + currRange}
-                                  style={{backgroundColor: CONCEPT_COLORS[currRange % 10]}}>
-                                {" "}
-                                <HoverBox
-                                    word={tokens[idxEnd]}
-                                    conceptIdx={currRange}
-                                    hovertoggle={hoverToggle}
-                                    annotation={annotation}
-                                    color={CONCEPT_COLORS[currRange % 10]}/>
-                                <a key={idEnd + "-2"} id={idEnd} href="">]</a>
-                                <sub key={idEnd + "-3"} id={idEnd}>{currRange + 1}</sub>
-                            </abbr>
-                        </b>)
+                                {tokens.slice(idxStart + 1, idxEnd).map((elem, index) => {
+                                    let tokenIdx = idxStart + index + 1
+                                    return <abbr key={'w' + tokenIdx + "-1"}
+                                                 id={'w' + tokenIdx}
+                                                 className={"cr cr-" + currRange}
+                                                 style={{backgroundColor: CONCEPT_COLORS[currRange % 10]}}>
+                                        {flags[tokenIdx] && " "}
+                                        <HoverBox
+                                            word={elem}
+                                            conceptIdx={currRange}
+                                            hovertoggle={hoverToggle}
+                                            annotation={annotation}
+                                            color={CONCEPT_COLORS[currRange % 10]}/>
+                                    </abbr>
+                                })}
+                                <abbr key={idEnd + "-1"} id={idEnd} className={"cr cr-" + currRange}
+                                      style={{backgroundColor: CONCEPT_COLORS[currRange % 10]}}>
+                                    {" "}
+                                    <HoverBox
+                                        word={tokens[idxEnd]}
+                                        conceptIdx={currRange}
+                                        hovertoggle={hoverToggle}
+                                        annotation={annotation}
+                                        color={CONCEPT_COLORS[currRange % 10]}/>
+                                    <a key={idEnd + "-2"} id={idEnd + '-close'} href="">]</a>
+                                    <sub key={idEnd + "-3"} id={idEnd + '-nr'}>{currRange + 1}</sub>
+                                </abbr>
+                            </b>)
+                    }
                 } else {
                     continue;
                 }
@@ -319,7 +339,7 @@ const AnnotationView: FC = () => {
             dispatch(setWordFlags(flags));
         }
         return buffer
-    }, [annotation, conceptRanges, markedWords, hoverToggle])
+    }, [annotation, conceptRanges, markedWords, hoverToggle, showConcepts])
 
     useEffect(() => {
         if (!projectName) {
@@ -351,7 +371,7 @@ const AnnotationView: FC = () => {
             if (idoc.objects && objIntIdx !== undefined && annoIntIdx !== undefined &&
                 objIntIdx >= 0 && annoIntIdx >= 0 && objIntIdx < idoc.objects.length) {
                 let annotations = idoc.objects[objIntIdx].annotations;
-                if (objId && annotations && annoIntIdx < annotations.length) {
+                if (annotations && annoIntIdx < annotations.length) {
                     dispatch(setObjectIdx(objIntIdx));
                     let obj = idoc.objects[objIntIdx];
                     dispatch(setObject(obj));

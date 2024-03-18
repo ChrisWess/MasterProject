@@ -3,7 +3,6 @@ import './App.css';
 import UserDashboard from "./dashboard/UserDashboard";
 import {createBrowserRouter, createRoutesFromElements, Navigate, Route, RouterProvider} from "react-router-dom";
 import NotFound from "./utils/NotFound";
-import TestPage from "./components/TestPage";
 import RootLayout from "./layouts/RootLayout";
 import ProjectMainPage from "./project_main/ProjectMainPage";
 import ProjectLayout from "./layouts/ProjectLayout";
@@ -14,6 +13,7 @@ import ObjectPage from "./object_annotator/ObjectPage";
 import NewObjectPage from "./object_annotator/NewObjectPage";
 import AnnotationView from "./annotation_manager/AnnotationView";
 import AnnotationCreateView from "./annotation_manager/NewAnnotationView";
+import FeatureView from "./concept_viewer/FeatureView";
 
 
 const router = createBrowserRouter(
@@ -28,8 +28,8 @@ const router = createBrowserRouter(
                 <Route path=":projectName/idoc/:docId/newObj" element={<NewObjectPage/>}/>
                 <Route path=":projectName/idoc/:docId/:objIdx/:annoIdx" element={<AnnotationView/>}/>
                 <Route path=":projectName/idoc/:docId/:objIdx/newAnno" element={<AnnotationCreateView/>}/>
+                <Route path=":projectName/idoc/:docId/:objIdx/:annoIdx/:conceptIdx" element={<FeatureView/>}/>
             </Route>
-            <Route path="test" element={<TestPage/>}/>
             <Route path="dashboard" element={<UserDashboard/>}/>
             {/* Using path="*"" means "match anything", so this route
                   acts like a catch-all for URLs that we don't have explicit

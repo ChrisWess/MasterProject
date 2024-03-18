@@ -207,7 +207,9 @@ const DocControlPanel: FC = () => {
     }
 
     useEffect(() => {
-        mapLabels(idoc).then(lm => lm && dispatch(setLabelMap(lm)));
+        if (idoc) {
+            mapLabels(idoc).then(lm => lm && dispatch(setLabelMap(lm)));
+        }
     }, [idoc]);
 
     return (

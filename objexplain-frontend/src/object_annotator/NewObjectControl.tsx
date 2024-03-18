@@ -45,6 +45,7 @@ const NewObjectControlPanel: FC<NewObjectControlProps> = ({resetZoomCallback}) =
         if (project && idoc) {
             dispatch(clearObject())
             dispatch(clearBbox())
+            dispatch(clearDoc())
             navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}`)
         }
     }
@@ -60,8 +61,7 @@ const NewObjectControlPanel: FC<NewObjectControlProps> = ({resetZoomCallback}) =
             <Typography sx={{mb: 1, color: 'text.secondary'}} variant='h5'>Create new
                 Object {idoc && idoc.objects && idoc.objects.length + 1}</Typography>
             <FormGroup row sx={{ml: 1}}>
-                <FormControlLabel control={<Switch defaultChecked={showObjs}
-                                                   onChange={() => dispatch(toggleShowObjs())}/>}
+                <FormControlLabel control={<Switch checked={showObjs} onChange={() => dispatch(toggleShowObjs())}/>}
                                   label="Show Objects" sx={{mr: 6}}/>
             </FormGroup>
             <Divider sx={{my: 1}}/>
@@ -83,7 +83,7 @@ const NewObjectControlPanel: FC<NewObjectControlProps> = ({resetZoomCallback}) =
                          setAlertContent={setAlertContent} setAlertSeverity={setAlertSeverity}/>
             <Divider sx={{my: 1}}/>
             <ButtonGroup sx={{width: '100%', bottom: 5}}>
-                <Button onClick={() => dispatch(toggleMovable())} variant={isMoveImg ? "outlined" : "contained"}
+                <Button onClick={() => dispatch(toggleMovable())} variant={isMoveImg ? "contained" : "outlined"}
                         sx={{flexGrow: 50}}>
                     Move / Zoom in Image
                 </Button>

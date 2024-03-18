@@ -94,6 +94,7 @@ const ObjectControlPanel: FC = () => {
 
     const toImageView = () => {
         if (project && idoc) {
+            dispatch(clearDoc())
             dispatch(clearObject())
             navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}`)
         }

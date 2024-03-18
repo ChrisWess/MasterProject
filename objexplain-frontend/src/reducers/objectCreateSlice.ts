@@ -1,16 +1,15 @@
 import {createSlice, PayloadAction} from "@reduxjs/toolkit";
-
-type Bbox = { tlx: number; tly: number; brx: number; bry: number };
+import {BoundingBoxCoords} from "../api/models/feature";
 
 interface NewObjectPageState {
     showCurrObjs: boolean;
     isMoveImg: boolean;
-    newBbox: Bbox | undefined;
+    newBbox: BoundingBoxCoords | undefined;
 }
 
 const initialState: NewObjectPageState = {
     showCurrObjs: true,
-    isMoveImg: true,
+    isMoveImg: false,
     newBbox: undefined,
 };
 
@@ -24,7 +23,7 @@ export const newObjectPageSlice = createSlice({
         toggleMovable: (state) => {
             state.isMoveImg = !state.isMoveImg;
         },
-        setBbox: (state, action: PayloadAction<Bbox>) => {
+        setBbox: (state, action: PayloadAction<BoundingBoxCoords>) => {
             state.newBbox = action.payload;
         },
         clearBbox: (state) => {

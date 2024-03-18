@@ -11,12 +11,12 @@ interface AnnotationPageState {
     markedWordsPrevColors: string[] | undefined;
     conceptSubstrings: string[] | undefined;
     conceptRanges: [number, number][] | undefined;
-    objImgUrl: string | undefined;
     showFeatures: boolean;
     featuresVis: boolean[];
     features: (VisualFeature | string)[];
     showConcepts: boolean;
     showHoverText: boolean;
+    isConceptExpanded: boolean;
 }
 
 const initialState: AnnotationPageState = {
@@ -28,12 +28,12 @@ const initialState: AnnotationPageState = {
     markedWordsPrevColors: undefined,
     conceptSubstrings: undefined,
     conceptRanges: undefined,
-    objImgUrl: undefined,
     showFeatures: true,
     featuresVis: [],
     features: [],
     showConcepts: true,
     showHoverText: true,
+    isConceptExpanded: false,
 };
 
 export const annotationPageSlice = createSlice({
@@ -76,8 +76,8 @@ export const annotationPageSlice = createSlice({
                 state.features = featsArr
             }
         },
-        addConceptAt: (state, action: PayloadAction<number>) => {
-            let addedIdx = action.payload
+        addConceptAt: (state, action: PayloadAction<[number, string]>) => {
+            let addedIdx = action.payload[0]
             state.selectedConcept = addedIdx;
             let marked = state.markedWords;
             if (marked.length === 1) {
@@ -107,6 +107,11 @@ export const annotationPageSlice = createSlice({
                     }
                     strings.splice(addedIdx, 0, newString);
                     state.conceptSubstrings = strings;
+                }
+                let features = state.features;
+                if (features) {
+                    features.splice(addedIdx, 0, action.payload[1])
+                    state.features = features
                 }
                 let visArr = state.featuresVis;
                 if (visArr) {
@@ -167,23 +172,19 @@ export const annotationPageSlice = createSlice({
         setConceptRanges: (state, action: PayloadAction<[number, number][]>) => {
             state.conceptRanges = action.payload;
         },
-        setObjImgUrl: (state, action: PayloadAction<string>) => {
-            state.objImgUrl = action.payload;
-        },
         clearAnnotationView: (state) => {
             state.featuresVis = [];
             state.features = [];
             state.annotation = undefined;
             state.conceptSubstrings = undefined;
-            state.objImgUrl = undefined;
         },
         switchFeaturesVisible: (state) => {
             state.showFeatures = !state.showFeatures;
         },
         switchFeatVisible: (state, action: PayloadAction<number>) => {
             let payload = action.payload;
-            if (state.featuresVis && payload >= 0 && payload < state.featuresVis.length) {
-                let prev = state.featuresVis;
+            let prev = state.featuresVis;
+            if (prev && payload >= 0 && payload < prev.length) {
                 prev[payload] = !prev[payload];
                 state.featuresVis = prev;
             }
@@ -199,8 +200,14 @@ export const annotationPageSlice = createSlice({
             }
             state.features = features
         },
+        toggleShowConcepts: (state) => {
+            state.showConcepts = !state.showConcepts;
+        },
         toggleHoverText: (state) => {
             state.showHoverText = !state.showHoverText;
+        },
+        toggleConceptExpanded: (state) => {
+            state.isConceptExpanded = !state.isConceptExpanded;
         },
     }
 });
@@ -209,9 +216,9 @@ export const annotationPageSlice = createSlice({
 export const {
     setAnnotationIdx, setAnnotation, setSelectedConcept, clearSelectedConcept,
     setWordFlags, setMarkedWords, setPrevColors, clearPrevColors,
-    setConceptSubs, setConceptRanges, setObjImgUrl, switchFeaturesVisible,
-    switchFeatVisible, setFeatures, removeConceptAt, addConceptAt,
-    extractConceptInfo, toggleHoverText,
+    switchFeaturesVisible, switchFeatVisible, setFeatures,
+    removeConceptAt, addConceptAt, extractConceptInfo,
+    toggleShowConcepts, toggleHoverText, toggleConceptExpanded,
 } = annotationPageSlice.actions;
 
 export default annotationPageSlice.reducer;

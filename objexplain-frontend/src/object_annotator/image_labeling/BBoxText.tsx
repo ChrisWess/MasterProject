@@ -6,7 +6,7 @@ interface BBoxTextProps {
     tly: number;
     brx: number;
     bry: number;
-    onContextMenu: (e: React.MouseEvent<SVGTextElement, MouseEvent>, bbox: number[]) => void;
+    onContextMenu?: (e: React.MouseEvent<SVGTextElement, MouseEvent>, bbox: number[]) => void;
     fontSize: number;
 }
 
@@ -23,7 +23,7 @@ function BBoxText({text, tlx, tly, brx, bry, onContextMenu, fontSize}: BBoxTextP
             stroke={"gray"}
             strokeWidth={0.75}
             fontSize={`${fontSize}px`}
-            onContextMenu={(e) => onContextMenu(e, [tlx, tly, brx, bry])}
+            onContextMenu={(e) => onContextMenu && onContextMenu(e, [tlx, tly, brx, bry])}
         >
             {text}
         </text>

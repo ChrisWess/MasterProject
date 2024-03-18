@@ -13,6 +13,7 @@ import objectPageReducer from "./reducers/objectSlice"
 import newObjectPageReducer from "./reducers/objectCreateSlice"
 import annotationPageReducer from "./reducers/annotationSlice";
 import newAnnotationPageReducer from "./reducers/annotationCreateSlice";
+import featurePageReducer from "./reducers/featureSlice";
 
 
 const store = configureStore({
@@ -25,6 +26,7 @@ const store = configureStore({
         newObj: newObjectPageReducer,
         annotation: annotationPageReducer,
         newAnno: newAnnotationPageReducer,
+        feature: featurePageReducer,
     }
 })
 
