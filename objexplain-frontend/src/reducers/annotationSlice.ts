@@ -173,10 +173,20 @@ export const annotationPageSlice = createSlice({
             state.conceptRanges = action.payload;
         },
         clearAnnotationView: (state) => {
+            state.annotationIdx = undefined;
+            state.annotation = undefined;
+            state.selectedConcept = undefined;
+            state.markedWords = [];
+            state.wordFlags = undefined;
+            state.markedWordsPrevColors = undefined;
+            state.conceptSubstrings = undefined;
+            state.conceptRanges = undefined;
+            state.showFeatures = true;
             state.featuresVis = [];
             state.features = [];
-            state.annotation = undefined;
-            state.conceptSubstrings = undefined;
+            state.showConcepts = true;
+            state.showHoverText = true;
+            state.isConceptExpanded = false;
         },
         switchFeaturesVisible: (state) => {
             state.showFeatures = !state.showFeatures;
@@ -219,6 +229,7 @@ export const {
     switchFeaturesVisible, switchFeatVisible, setFeatures,
     removeConceptAt, addConceptAt, extractConceptInfo,
     toggleShowConcepts, toggleHoverText, toggleConceptExpanded,
+    clearAnnotationView,
 } = annotationPageSlice.actions;
 
 export default annotationPageSlice.reducer;

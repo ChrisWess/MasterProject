@@ -3,8 +3,10 @@ from bson.errors import InvalidId
 from flask import request, abort
 
 from app import application
+from app.db.daos.base import BaseDAO
 from app.db.daos.object_dao import ObjectDAO
 from app.db.daos.vis_feature_dao import VisualFeatureDAO
+from app.db.models.payloads.vis_feature import VisualFeaturePayload
 
 
 @application.route('/visFeature', methods=['GET'])
@@ -23,6 +25,28 @@ def find_features_of_object(obj_id):
         return VisualFeatureDAO().find_by_object(ObjectId(obj_id), projection=request.args, generate_response=True)
     except InvalidId:
         err_msg = "The Detected Object ID you provided is not a valid ID!"
+        application.logger.error(err_msg)
+        abort(404, err_msg)
+
+
+@application.route('/visFeature/annotation/<anno_id>/concept/<concept_id>', methods=['GET'])
+def find_feature_by_annotation_concept(anno_id, concept_id):
+    try:
+        anno_id = ObjectId(anno_id)
+    except InvalidId:
+        err_msg = "The Annotation ID you provided is not a valid ID!"
+        application.logger.error(err_msg)
+        abort(404, err_msg)
+    try:
+        feat = VisualFeatureDAO().find_by_annotation_concept(anno_id, ObjectId(concept_id), projection=request.args,
+                                                             generate_response=True)
+        if feat is None:
+            err_msg = "No visual feature found by the given IDs!"
+            application.logger.error(err_msg)
+            abort(400, err_msg)
+        return feat
+    except InvalidId:
+        err_msg = "The Concept ID you provided is not a valid ID!"
         application.logger.error(err_msg)
         abort(404, err_msg)
 
@@ -79,10 +103,7 @@ def validate_visual_feature(annotation_id, concept_id, bboxs):
     return obj['_id']
 
 
-@application.route('/visFeature', methods=['POST'])
-# @login_required
-def add_feature():
-    args = request.json
+def prepare_add_or_update(args):
     if "conceptId" not in args or "bboxs" not in args or "annoId" not in args:
         err_msg = 'Your request body must contain the key-value pairs with keys "conceptId", "annoId" and "bboxs"!'
         application.logger.error(err_msg)
@@ -113,30 +134,57 @@ def add_feature():
     try:
         concept_id = ObjectId(args["conceptId"])
         obj_id = validate_visual_feature(anno_id, concept_id, bboxs)
-        ex_feature = VisualFeatureDAO().find_by_annotation_concept(anno_id, concept_id, projection='bboxs')
-        if ex_feature is None:
-            response = VisualFeatureDAO().add(obj_id, anno_id, concept_id, bboxs, generate_response=True)
-            application.logger.info(f"Added new feature {response['result']} to annotation {annotation_id} !")
-        else:
-            old_bboxs = ex_feature['bboxs']
-            for i, bbox in enumerate(bboxs):
-                for j in range(i + 1, len(bboxs) - i):
-                    if bbox == bboxs[j]:
-                        err_msg = (f"Duplicate bounding box with corners ({bbox[0]}, {bbox[1]}), ({bbox[2]}, "
-                                   f"{bbox[3]}) in the input bounding boxes!")
-                        application.logger.error(err_msg)
-                        abort(400, err_msg)
-                for obbox in old_bboxs:
-                    if (bbox[0] == obbox['tlx'] and bbox[1] == obbox['tly'] and bbox[2] == obbox['brx'] and
-                            bbox[3] == obbox['bry']):
-                        err_msg = f"Duplicate bounding box with corners ({bbox[0]}, {bbox[1]}), ({bbox[2]}, {bbox[3]})!"
-                        application.logger.error(err_msg)
-                        abort(400, err_msg)
-            feat_id = ex_feature['_id']
-            response = VisualFeatureDAO().push_bboxs(feat_id, bboxs, generate_response=True)
-            application.logger.info(f"Added {len(bboxs)} new bounding boxes to visual feature {str(feat_id)} !")
+        return anno_id, concept_id, obj_id, bboxs
     except InvalidId:
         err_msg = "The concept ID you provided is not a valid ID!"
         application.logger.error(err_msg)
         abort(404, err_msg)
+
+
+@application.route('/visFeature', methods=['POST'])
+# @login_required
+def add_feature():
+    args = request.json
+    anno_id, concept_id, obj_id, bboxs = prepare_add_or_update(args)
+    ex_feature = VisualFeatureDAO().find_by_annotation_concept(anno_id, concept_id, projection='_id')
+    if ex_feature is None:
+        feat_dao = VisualFeatureDAO()
+        feature = feat_dao.add(obj_id, anno_id, concept_id, bboxs)[1]
+        application.logger.info(f"Added new feature {feature['_id']} to annotation {anno_id} !")
+        response = feat_dao.to_response(feature, BaseDAO.CREATE)
+        response['result'] = VisualFeaturePayload(**feature).to_dict()
+        return response
+    else:
+        err_msg = "A Visual Feature with the given IDs does already exist!"
+        application.logger.error(err_msg)
+        abort(400, err_msg)
+
+
+@application.route('/visFeature', methods=['PUT'])
+# @login_required
+def update_feature():
+    args = request.json
+    anno_id, concept_id, obj_id, bboxs = prepare_add_or_update(args)
+    ex_feature = VisualFeatureDAO().find_by_annotation_concept(anno_id, concept_id, projection='bboxs')
+    if ex_feature is None:
+        err_msg = "No Visual Feature with the given IDs exist, yet! Please insert the feature!"
+        application.logger.error(err_msg)
+        abort(400, err_msg)
+    old_bboxs = ex_feature['bboxs']
+    for i, bbox in enumerate(bboxs):
+        for j in range(i + 1, len(bboxs) - i):
+            if bbox == bboxs[j]:
+                err_msg = (f"Duplicate bounding box with corners ({bbox[0]}, {bbox[1]}), ({bbox[2]}, "
+                           f"{bbox[3]}) in the input bounding boxes!")
+                application.logger.error(err_msg)
+                abort(400, err_msg)
+        for obbox in old_bboxs:
+            if (bbox[0] == obbox['tlx'] and bbox[1] == obbox['tly'] and bbox[2] == obbox['brx'] and
+                    bbox[3] == obbox['bry']):
+                err_msg = f"Duplicate bounding box with corners ({bbox[0]}, {bbox[1]}), ({bbox[2]}, {bbox[3]})!"
+                application.logger.error(err_msg)
+                abort(400, err_msg)
+    feat_id = ex_feature['_id']
+    response = VisualFeatureDAO().push_bboxs(feat_id, bboxs, generate_response=True)
+    application.logger.info(f"Added {len(bboxs)} new bounding boxes to visual feature {str(feat_id)} !")
     return response

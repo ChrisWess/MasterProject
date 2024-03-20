@@ -20,7 +20,6 @@ interface LabelSelectProps {
     labelButtonText: string;
     categoryButtonText: string;
     makeNewObject: boolean;  // false := label update
-    projectName?: string;
     setAlertContent: Function;
     setAlertSeverity: Function;
     params?: any;
@@ -33,10 +32,9 @@ const LabelSelect: FC<LabelSelectProps> = ({
                                                labelButtonText,
                                                categoryButtonText,
                                                makeNewObject,
-                                               projectName,
                                                setAlertContent,
                                                setAlertSeverity,
-                                               ...params
+                                               params
                                            }) => {
     const [labelValue, setLabelValue] = useState<string>('');
     const [labelIdx, setLabelIdx] = useState<number>();
@@ -202,6 +200,7 @@ const LabelSelect: FC<LabelSelectProps> = ({
                     dispatch(setObject(obj))
                     dispatch(setDoc(newDoc))
                     setLabelValue('')
+                    params.resetRect()
                     setAlertSeverity('success')
                     setAlertContent(`New Object was added to image document "${idoc.name}"!`)
                 }
@@ -319,7 +318,7 @@ const LabelSelect: FC<LabelSelectProps> = ({
                 </Button>
             </Box>
             <Typography sx={{mb: 0.5, pt: 1}}>{categoriesCaption}</Typography>
-            <Box sx={{display: 'flex', mb: 2, border: '1px solid #181818', bgcolor: '#272727', minHeight: 50, p: 1}}>
+            <Box sx={{display: 'flex', mb: 1, border: '1px solid #181818', bgcolor: '#272727', minHeight: 50, p: 1}}>
                 {<>
                     {assignedCategories.map((category, index) =>
                         <Chip key={'categ' + index} label={<b>{category}</b>}

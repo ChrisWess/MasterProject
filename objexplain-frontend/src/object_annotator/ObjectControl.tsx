@@ -1,6 +1,6 @@
 import {FC, useEffect, useMemo, useState} from "react";
 import Box from "@mui/material/Box";
-import {Divider, IconButton, List, ListItem, ListItemIcon} from "@mui/material";
+import {Button, Divider, IconButton, List, ListItem, ListItemIcon} from "@mui/material";
 import ArrowLeftIcon from '@mui/icons-material/ArrowLeft';
 import ArrowDropUpIcon from '@mui/icons-material/ArrowDropUp';
 import {useDispatch, useSelector} from "react-redux";
@@ -94,7 +94,6 @@ const ObjectControlPanel: FC = () => {
 
     const toImageView = () => {
         if (project && idoc) {
-            dispatch(clearDoc())
             dispatch(clearObject())
             navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}`)
         }
@@ -122,8 +121,16 @@ const ObjectControlPanel: FC = () => {
                          categoriesCaption='Categories of the Label' categoryButtonText='Insert'
                          categoriesDescriptor='Add further Categories: ' makeNewObject={false}
                          setAlertContent={setAlertContent} setAlertSeverity={setAlertSeverity}/>
-            <Divider/>
-            <Box sx={{maxHeight: '45%', overflow: 'auto'}}>
+            <Divider sx={{mb: 1}}/>
+            <Button variant='contained' sx={{textTransform: 'none', width: "100%"}} onClick={() => {
+                if (project && idoc && objIdx !== undefined) {
+                    navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}/${objIdx}/updObj`)
+                }
+            }}>
+                Update Object Bounding Box
+            </Button>
+            <Divider sx={{mt: 1}}/>
+            <Box sx={{maxHeight: '40%', overflow: 'auto'}}>
                 {!!annoList && annoList}
             </Box>
             <AlertMessage content={alertContent} setContent={setAlertContent} severity={alertSeverity}

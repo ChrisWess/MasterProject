@@ -82,9 +82,7 @@ const ObjectPage: FC = () => {
             loadDoc(docId).then(idocData => {
                 if (idocData) {
                     dispatch(setDoc(idocData.result));
-                    loadDocImage(docId).then(file => {
-                        file && dispatch(setImgUrl(file))
-                    });
+                    loadDocImage(docId).then(file => file && dispatch(setImgUrl(file)));
                 } else {
                     navigate('/notfound404')
                 }
@@ -100,8 +98,8 @@ const ObjectPage: FC = () => {
     }, [idoc, labelsMap]);
 
     useEffect(() => {
-        if (imgUrl && idoc) {
-            if (objIntIdx !== undefined && idoc.objects && objIntIdx >= 0 && objIntIdx < idoc.objects.length) {
+        if (imgUrl && idoc?.objects) {
+            if (objIntIdx !== undefined && objIntIdx >= 0 && objIntIdx < idoc.objects.length) {
                 dispatch(setObjectIdx(objIntIdx));
                 dispatch(setTitle(`Object ${objIntIdx + 1} of ${idoc.name}`));
                 let obj = idoc.objects[objIntIdx];

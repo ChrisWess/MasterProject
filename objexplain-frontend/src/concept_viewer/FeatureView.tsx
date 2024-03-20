@@ -9,13 +9,14 @@ import {setProject} from "../reducers/mainPageSlice";
 import {ImageDocument} from "../api/models/imgdoc";
 import {setObject, setObjectIdx} from "../reducers/objectSlice";
 import {Annotation} from "../api/models/annotation";
-import {setAnnotation, setAnnotationIdx} from "../reducers/annotationSlice";
+import {extractConceptInfo, setAnnotation, setAnnotationIdx} from "../reducers/annotationSlice";
 import FeatureControlPanel from "./FeatureControl";
 import * as d3 from "d3";
 import {ZoomBehavior} from "d3";
 import FeatureAnnotator from "./FeatureAnnotator";
 import {DetectedObject} from "../api/models/object";
-import {setConceptIdx} from "../reducers/featureSlice";
+import {setConceptIdx, setFeature} from "../reducers/featureSlice";
+import {VisualFeature} from "../api/models/feature";
 
 
 const FeatureView: FC = () => {
@@ -31,6 +32,7 @@ const FeatureView: FC = () => {
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
     const detObj: DetectedObject | undefined = useSelector((state: any) => state.object.detObj);
     const annotation: Annotation | undefined = useSelector((state: any) => state.annotation.annotation);
+    const features: (VisualFeature | string)[] = useSelector((state: any) => state.annotation.features);
 
     let objIntIdx = objIdx ? parseInt(objIdx) : undefined;
     let objId = idoc?.objects && objIntIdx !== undefined ? idoc.objects[objIntIdx]._id : undefined
@@ -39,11 +41,17 @@ const FeatureView: FC = () => {
 
     const zoom: ZoomBehavior<SVGSVGElement, unknown> = useMemo(() =>
         d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.5, 5]), []);
+    const rectRef: RefObject<SVGRectElement> = useRef<SVGRectElement>(null);
 
     const resetZoom = useCallback(() => {
         const svg = d3.select<SVGSVGElement, unknown>(svgRef.current!);
         svg.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
     }, [zoom, svgRef])
+
+    const resetRect = () => {
+        const myRect = d3.select(rectRef.current);
+        myRect.attr("width", 0).attr("height", 0);
+    };
 
     const loadProject = async () => {
         if (projectName) {
@@ -64,6 +72,10 @@ const FeatureView: FC = () => {
         return await loadImage('object/img', objId)
     }
 
+    const loadFeature = async (annoId: string, conceptId: string) => {
+        return await getRequest(`visFeature/annotation/${annoId}/concept/${conceptId}`)
+    }
+
     useEffect(() => {
         if (!project) {
             loadProject().then(projectData => projectData && dispatch(setProject(projectData.result)))
@@ -75,7 +87,7 @@ const FeatureView: FC = () => {
                 }
             })
         }
-        context.setControlPanel(<FeatureControlPanel resetZoomCallback={resetZoom}/>)
+        context.setControlPanel(<FeatureControlPanel resetRect={resetRect} resetZoomCallback={resetZoom}/>)
     }, []);
 
     useEffect(() => {
@@ -91,13 +103,23 @@ const FeatureView: FC = () => {
                     let currAnno = annotations[annoIntIdx];
                     if (!annotation || currAnno._id !== annotation._id) {
                         dispatch(setAnnotation(currAnno));
+                        dispatch(extractConceptInfo(currAnno))
                     }
-                    // loadVisualFeatures(currAnno._id).then(features => dispatch(setFeatures(features)));
                     loadObjectImage(objId).then(file => {
                         file && setObjImgUrl(file)
                     });
-                    if (conceptIntIdx < currAnno.conceptIds.length)
+                    if (conceptIntIdx < currAnno.conceptIds.length) {
                         dispatch(setConceptIdx(conceptIntIdx))
+                        if (features.length === 0) {
+                            let conceptId = currAnno.conceptIds[conceptIntIdx]
+                            loadFeature(currAnno._id, conceptId).then(data => data && dispatch(setFeature(data.result)))
+                        } else if (typeof features[conceptIntIdx] !== 'string') {
+                            // @ts-ignore
+                            dispatch(setFeature(features[conceptIntIdx]))
+                        }
+                    } else {
+                        navigate('/notfound404')
+                    }
                 } else {
                     navigate('/notfound404')
                 }
@@ -109,7 +131,8 @@ const FeatureView: FC = () => {
 
     return (
         <Box height='100%'>
-            <FeatureAnnotator objImgUrl={objImgUrl ? objImgUrl : ''} svgRef={svgRef} zoom={zoom} height={780}/>
+            <FeatureAnnotator objImgUrl={objImgUrl ? objImgUrl : ''} svgRef={svgRef} rectRef={rectRef} zoom={zoom}
+                              resetRect={resetRect} height={780}/>
         </Box>
     )
 }

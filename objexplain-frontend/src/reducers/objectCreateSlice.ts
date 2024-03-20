@@ -29,11 +29,17 @@ export const newObjectPageSlice = createSlice({
         clearBbox: (state) => {
             state.newBbox = undefined;
         },
+        clearUpdObjectView: (state) => {
+            state.showCurrObjs = true;
+            state.isMoveImg = false;
+            state.newBbox = undefined;
+        },
     }
 });
 
 export const {
-    toggleShowObjs, toggleMovable, setBbox, clearBbox
+    toggleShowObjs, toggleMovable, setBbox, clearBbox,
+    clearUpdObjectView,
 } = newObjectPageSlice.actions;
 
 export default newObjectPageSlice.reducer;

@@ -1,8 +1,9 @@
 import {createSlice, PayloadAction} from "@reduxjs/toolkit";
-import {BoundingBoxCoords} from "../api/models/feature";
+import {BoundingBoxCoords, VisualFeature} from "../api/models/feature";
 
 interface FeaturesPageState {
     conceptIdx: number | undefined;
+    visualFeature: VisualFeature | undefined;
     currBbox: BoundingBoxCoords | undefined,
     bboxs: BoundingBoxCoords[];
     showPrevInput: boolean;
@@ -12,6 +13,7 @@ interface FeaturesPageState {
 
 const initialState: FeaturesPageState = {
     conceptIdx: undefined,
+    visualFeature: undefined,
     currBbox: undefined,
     bboxs: [],
     bboxsVis: [],
@@ -26,20 +28,32 @@ export const featurePageSlice = createSlice({
         setConceptIdx: (state, action: PayloadAction<number>) => {
             state.conceptIdx = action.payload;
         },
+        setFeature: (state, action: PayloadAction<VisualFeature>) => {
+            state.visualFeature = action.payload;
+        },
         setCurrBbox: (state, action: PayloadAction<BoundingBoxCoords>) => {
             state.currBbox = action.payload;
+        },
+        clearFeatureBbox: (state) => {
+            state.currBbox = undefined;
         },
         addBbox: (state) => {
             let curr = state.currBbox
             if (curr) {
-                let bboxs = state.bboxs
                 let visArr = state.bboxsVis
-                bboxs.push(curr);
                 visArr.push(true)
-                state.bboxs = bboxs
+                state.bboxs = [...state.bboxs, curr]
                 state.bboxsVis = visArr
                 state.currBbox = undefined
             }
+        },
+        initBboxVisibilities: (state) => {
+            let feat = state.visualFeature
+            let prevLength = feat?.bboxs ? feat.bboxs.length : 0
+            state.bboxsVis = Array(prevLength).fill(true)
+        },
+        clearPrevBboxs: (state) => {
+            state.bboxs = [];
         },
         switchBboxVisible: (state, action: PayloadAction<number>) => {
             let payload = action.payload;
@@ -51,6 +65,7 @@ export const featurePageSlice = createSlice({
         },
         clearFeaturePage: (state) => {
             state.conceptIdx = undefined;
+            state.visualFeature = undefined;
             state.currBbox = undefined
             state.bboxs = [];
             state.bboxsVis = [];
@@ -67,9 +82,9 @@ export const featurePageSlice = createSlice({
 });
 
 export const {
-    setConceptIdx, setCurrBbox, addBbox,
-    switchBboxVisible, clearFeaturePage, toggleObjMovable,
-    toggleShowPrevBboxs,
+    setConceptIdx, setFeature, setCurrBbox, addBbox,
+    clearFeatureBbox, initBboxVisibilities, clearPrevBboxs, switchBboxVisible,
+    clearFeaturePage, toggleObjMovable, toggleShowPrevBboxs,
 } = featurePageSlice.actions;
 
 export default featurePageSlice.reducer;

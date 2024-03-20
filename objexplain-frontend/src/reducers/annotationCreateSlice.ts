@@ -15,12 +15,15 @@ export const newAnnotationPageSlice = createSlice({
         setMode: (state, action: PayloadAction<number>) => {
             state.modeId = action.payload;
         },
+        clearNewAnnoView: (state) => {
+            state.modeId = 0;
+        },
     }
 });
 
 // actions
 export const {
-    setMode,
+    setMode, clearNewAnnoView,
 } = newAnnotationPageSlice.actions;
 
 export default newAnnotationPageSlice.reducer;

@@ -8,16 +8,18 @@ import {ProjectStats} from "../api/models/project";
 import {setProject} from "../reducers/mainPageSlice";
 import {ImageDocument} from "../api/models/imgdoc";
 import {setDoc, setImgUrl, setLabelMap} from "../reducers/idocSlice";
-import NewObjectControlPanel from "./NewObjectControl";
 import ImageAnnotator from "./image_labeling/BBoxImgAnnotator";
 import {loadDocImage, loadProject} from "../document/ProjectIDocPage";
 import {loadDoc} from "./ObjectPage";
 import {mapLabels} from "../document/DocControl";
 import {Label} from "../api/models/label";
+import UpdObjectControlPanel from "./UpdateObjectControl";
+import {setObject, setObjectIdx} from "../reducers/objectSlice";
+import {setTitle} from "../reducers/appBarSlice";
 
 
-const NewObjectPage: FC = () => {
-    const {projectName, docId} = useParams();
+const UpdObjectPage: FC = () => {
+    const {projectName, docId, objIdx} = useParams();
     const context: any = useOutletContext();
 
     const navigate = useNavigate();
@@ -26,6 +28,9 @@ const NewObjectPage: FC = () => {
     const project: ProjectStats | undefined = useSelector((state: any) => state.mainPage.currProject);
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
     const labelsMap: [string, Label][] | undefined = useSelector((state: any) => state.iDoc.labelMap);
+    const imgUrl: string | undefined = useSelector((state: any) => state.iDoc.imgUrl);
+
+    let objIntIdx = objIdx ? parseInt(objIdx) : undefined;
 
     const svgRef: RefObject<SVGSVGElement> = useRef<SVGSVGElement>(null);
     const rectRef: RefObject<SVGRectElement> = useRef<SVGRectElement>(null);
@@ -75,8 +80,21 @@ const NewObjectPage: FC = () => {
         } else {
             dispatch(setDoc(idoc));
         }
-        context.setControlPanel(<NewObjectControlPanel resetRect={resetRect} resetZoomCallback={resetZoom}/>)
+        context.setControlPanel(<UpdObjectControlPanel resetZoomCallback={resetZoom}/>)
     }, []);
+
+    useEffect(() => {
+        if (imgUrl && idoc?.objects) {
+            if (objIntIdx !== undefined && objIntIdx >= 0 && objIntIdx < idoc.objects.length) {
+                dispatch(setObjectIdx(objIntIdx));
+                dispatch(setTitle(`Update Object ${objIntIdx + 1} of ${idoc.name}`));
+                let obj = idoc.objects[objIntIdx];
+                dispatch(setObject(obj));
+            } else {
+                navigate('/notfound404')
+            }
+        }
+    }, [idoc, imgUrl, objIntIdx]);
 
     return (
         <Box height='100%'>
@@ -85,4 +103,4 @@ const NewObjectPage: FC = () => {
     )
 }
 
-export default NewObjectPage
+export default UpdObjectPage

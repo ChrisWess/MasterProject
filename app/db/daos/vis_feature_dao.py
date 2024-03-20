@@ -26,18 +26,18 @@ class VisualFeatureDAO(JoinableDAO):
     @staticmethod
     def validate_bboxs_fit_into_parent(bboxs, parentbb):
         # Non-negativity is checked in the VisualFeature's BoundingBox model
-        px = parentbb[2] - parentbb[0]
-        py = parentbb[3] - parentbb[1]
+        ptlx, ptly, pbrx, pbry = parentbb
         for bbox in bboxs:
             if isinstance(bbox, (list, tuple)):
-                brx = bbox[2]
-                bry = bbox[3]
+                tlx, tly, brx, bry = bbox
             else:
+                tlx = bbox['tlx']
+                tly = bbox['tly']
                 brx = bbox['brx']
                 bry = bbox['bry']
-            if brx > px:
+            if ptlx > tlx or pbrx < brx:
                 raise ValueError('The bounding box exceeds its parent bounding box on its x-axis!')
-            elif bry > py:
+            elif ptly > tly or pbry < bry:
                 raise ValueError('The bounding box exceeds its parent bounding box on its y-axis!')
 
     @dao_query()
@@ -68,7 +68,7 @@ class VisualFeatureDAO(JoinableDAO):
         self._query_matcher.clear()
         if projection:
             projection.clear()
-        return self.to_response(result) if generate_response else result
+        return self.to_response(result) if generate_response and result is not None else result
 
     def find_by_object(self, obj_id, projection=None, generate_response=False, db_session=None, get_cursor=False):
         return self.simple_match('objectId', obj_id, projection,

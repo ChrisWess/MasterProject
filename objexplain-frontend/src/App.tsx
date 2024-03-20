@@ -14,6 +14,7 @@ import NewObjectPage from "./object_annotator/NewObjectPage";
 import AnnotationView from "./annotation_manager/AnnotationView";
 import AnnotationCreateView from "./annotation_manager/NewAnnotationView";
 import FeatureView from "./concept_viewer/FeatureView";
+import UpdObjectPage from "./object_annotator/UpdateObjectPage";
 
 
 const router = createBrowserRouter(
@@ -26,6 +27,7 @@ const router = createBrowserRouter(
                 <Route path=":projectName/idoc/:docId" element={<ProjectIDocPage/>} loader={loadIDoc}/>
                 <Route path=":projectName/idoc/:docId/:objIdx" element={<ObjectPage/>}/>
                 <Route path=":projectName/idoc/:docId/newObj" element={<NewObjectPage/>}/>
+                <Route path=":projectName/idoc/:docId/:objIdx/updObj" element={<UpdObjectPage/>}/>
                 <Route path=":projectName/idoc/:docId/:objIdx/:annoIdx" element={<AnnotationView/>}/>
                 <Route path=":projectName/idoc/:docId/:objIdx/newAnno" element={<AnnotationCreateView/>}/>
                 <Route path=":projectName/idoc/:docId/:objIdx/:annoIdx/:conceptIdx" element={<FeatureView/>}/>

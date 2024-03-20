@@ -1,7 +1,7 @@
 import Box from '@mui/material/Box';
 import {useNavigate, useOutletContext, useParams} from "react-router-dom";
 import {getRequest} from "../api/requests";
-import {FC, useEffect, useMemo, useRef} from "react";
+import {FC, Fragment, useEffect, useMemo, useRef} from "react";
 import {useDispatch, useSelector} from "react-redux";
 import {ProjectStats} from "../api/models/project";
 import {setDoc, setImgUrl} from "../reducers/idocSlice";
@@ -29,7 +29,7 @@ import {cropImage, loadDoc} from "../object_annotator/ObjectPage";
 import {setTitle} from "../reducers/appBarSlice";
 import {Label} from "../api/models/label";
 import {ReactJSXElement} from "@emotion/react/types/jsx-namespace";
-import HoverBox, {Highlighted} from "./HoverBox";
+import HoverBox, {Highlighted} from "../components/HoverBox";
 
 
 export const CONCEPT_COLORS = [
@@ -53,7 +53,6 @@ export const loadVisualFeatures = async (annoId: string) => {
 const AnnotationView: FC = () => {
     const {projectName, docId, objIdx, annoIdx} = useParams();
     const context: any = useOutletContext();
-    const imgContainer = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     const navigate = useNavigate();
@@ -84,48 +83,54 @@ const AnnotationView: FC = () => {
      */
 
     const generateFeatureBBoxs = () => {
-        if (idoc && featsVis && conceptSubs && features && imgContainer.current) {
-            let imgHeight = imgContainer.current.offsetHeight
+        if (idoc?.objects && featsVis && conceptSubs && features && canvasRef.current && objIntIdx !== undefined) {
+            let imgHeight = canvasRef.current.offsetHeight
             if (imgHeight > 0) {
-                let ratio = imgHeight / idoc.height
+                let obj = idoc.objects[objIntIdx]
+                let ratio = imgHeight / (obj.bry - obj.tly)
                 return conceptSubs.map((conceptString, index) => {
                     let feat = features[index]
                     if (typeof feat !== 'string' && featsVis[index]) {
                         let feature: VisualFeature = feat
                         let color = CONCEPT_COLORS[index % 10];
-                        // Supply text only for first bbox (use the text part of the concept of current annotation)
+                        // Supply text only for first bbox (that is large enough)
+                        let isNamed = false
                         return feature.bboxs!.map((bbox, idx) => {
                             let key = feature._id + '_' + idx;
-                            if (idx === 0) {
+                            let bWidth = bbox.brx - bbox.tlx
+                            let bHeight = bbox.bry - bbox.tly
+                            if (!isNamed && bWidth > 40 && bHeight > 40) {
+                                isNamed = true
                                 return <Box key={key} position='absolute' border='solid 5px'
                                             borderColor={color}
-                                            sx={{top: ratio * bbox.tlx - 5, left: ratio * bbox.tly - 5}}
-                                            width={ratio * (bbox.brx - bbox.tlx) + 10}
-                                            height={ratio * (bbox.bry - bbox.tly) + 10}
+                                            sx={{top: ratio * bbox.tly - 5, left: ratio * bbox.tlx - 5}}
+                                            width={ratio * bWidth + 10} height={ratio * bHeight + 10}
                                             onClick={() => {
                                                 // TODO
                                             }}>
-                                    <Typography color={color} sx={{fontSize: '14px', ml: '4px'}}>
+                                    <Typography key={'text' + key} color={color} sx={{fontSize: '14px', ml: '4px'}}>
                                         <b color={color}>{conceptString}</b>
                                     </Typography>
                                 </Box>
                             } else {
                                 return <Box key={key} position='absolute' border='solid 5px' borderColor={color}
-                                            sx={{top: ratio * bbox.tlx - 5, left: ratio * bbox.tly - 5}}
-                                            width={ratio * (bbox.brx - bbox.tlx) + 10}
-                                            height={ratio * (bbox.bry - bbox.tly) + 10}
+                                            sx={{top: ratio * bbox.tly - 5, left: ratio * bbox.tlx - 5}}
+                                            width={ratio * bWidth + 10} height={ratio * bHeight + 10}
                                             onClick={() => {
                                                 // TODO
                                             }}/>
                             }
                         })
                     }
+                    return <Fragment key={'featBoxPlaceholderInner' + index}></Fragment>
                 });
             }
         }
+        return [<Fragment key={'featBoxPlaceholder'}></Fragment>]
     }
 
-    const bboxs = useMemo(generateFeatureBBoxs, [idoc, conceptSubs, features, featsVis])
+    const bboxs = useMemo(generateFeatureBBoxs,
+        [idoc?.objects, conceptSubs, features, featsVis, canvasRef.current, objIntIdx])
 
     const clearPrevMarking = () => {
         if (prevWordColors) {
@@ -227,7 +232,9 @@ const AnnotationView: FC = () => {
             for (let i = 0; i < tokens.length; i++) {
                 let token: string = tokens[i];
                 let isPunct = token.match(/^[.,:!?;]$/);
-                flags.push(!isPunct)
+                let isHyphen = !isPunct && token === '-'
+                flags.push(!isHyphen && !isPunct)
+                // TODO: also remove the whitespace after a hyphen
                 if (!showConcepts || idxStart === -1 || idxStart > i) {
                     let currentId = 'w' + i;
                     if (isPunct) {
@@ -284,7 +291,10 @@ const AnnotationView: FC = () => {
                             <b key={currentId} id={currentId} onClick={setNewConceptSelection}>
                                 {" "}
                                 <abbr key={id + "-1"} id={id} className={"cr cr-" + currRange}
-                                      style={{backgroundColor: CONCEPT_COLORS[currRange % 10]}}>
+                                      style={{
+                                          backgroundColor: CONCEPT_COLORS[currRange % 10],
+                                          cursor: 'pointer', paddingTop: '2px',
+                                      }}>
                                     <a key={id + "-2"} id={id + '-open'} href="">[</a>
                                     <HoverBox
                                         word={tokens[idxStart]}
@@ -298,7 +308,10 @@ const AnnotationView: FC = () => {
                                     return <abbr key={'w' + tokenIdx + "-1"}
                                                  id={'w' + tokenIdx}
                                                  className={"cr cr-" + currRange}
-                                                 style={{backgroundColor: CONCEPT_COLORS[currRange % 10]}}>
+                                                 style={{
+                                                     backgroundColor: CONCEPT_COLORS[currRange % 10],
+                                                     cursor: 'pointer', paddingTop: '2px',
+                                                 }}>
                                         {flags[tokenIdx] && " "}
                                         <HoverBox
                                             word={elem}
@@ -309,7 +322,10 @@ const AnnotationView: FC = () => {
                                     </abbr>
                                 })}
                                 <abbr key={idEnd + "-1"} id={idEnd} className={"cr cr-" + currRange}
-                                      style={{backgroundColor: CONCEPT_COLORS[currRange % 10]}}>
+                                      style={{
+                                          backgroundColor: CONCEPT_COLORS[currRange % 10],
+                                          cursor: 'pointer', paddingTop: '2px',
+                                      }}>
                                     {" "}
                                     <HoverBox
                                         word={tokens[idxEnd]}
@@ -406,9 +422,12 @@ const AnnotationView: FC = () => {
                                         let feat = features[j]
                                         if (cid === feat.conceptId) {
                                             featArr.push(feat)
+                                            break
                                         }
                                     }
-                                    featArr.push(cid)
+                                    if (featArr.length < i + 1) {
+                                        featArr.push(cid)
+                                    }
                                 }
                             }
                             dispatch(setFeatures(featArr))
@@ -534,12 +553,12 @@ const AnnotationView: FC = () => {
                      borderColor: 'divider',
                      position: 'relative'
                  }}>
-                <Box ref={imgContainer} height='93%' sx={{
+                <Box height='93%' sx={{
                     position: 'absolute', display: 'block',
                     left: '50%', transform: 'translateX(-50%)'
                 }}>
                     {<canvas ref={canvasRef} style={{height: '100%'}}/>}
-                    {showFeats && bboxs && bboxs.flat()}
+                    {showFeats && bboxs?.length > 0 && bboxs.flat()}
                 </Box>
             </Box>
             <Box height='32%' id="annoViewer"

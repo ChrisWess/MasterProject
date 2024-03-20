@@ -1,41 +1,47 @@
 import * as d3 from "d3";
 import {ZoomBehavior} from "d3";
-import {FC, RefObject, useCallback, useEffect, useMemo, useRef} from "react";
+import {FC, Fragment, RefObject, useCallback, useEffect, useMemo, useRef} from "react";
 import {useDispatch, useSelector} from "react-redux";
 import BoundingBox from "../object_annotator/image_labeling/BBox";
 import BBoxText from "../object_annotator/image_labeling/BBoxText";
-import {BoundingBoxCoords} from "../api/models/feature";
+import {BoundingBoxCoords, VisualFeature} from "../api/models/feature";
 import {DetectedObject} from "../api/models/object";
-import {setCurrBbox} from "../reducers/featureSlice";
+import {clearFeatureBbox, setCurrBbox} from "../reducers/featureSlice";
 import {CONCEPT_COLORS} from "../annotation_manager/AnnotationView";
+import {ReactJSXElement} from "@emotion/react/types/jsx-namespace";
 
 
 interface FeatureAnnotatorProps {
     objImgUrl: string;
     svgRef: RefObject<SVGSVGElement>;
+    rectRef: RefObject<SVGRectElement>;
     zoom: ZoomBehavior<SVGSVGElement, unknown>;
+    resetRect: Function;
     height: number;
 }
 
-const FeatureAnnotator: FC<FeatureAnnotatorProps> = ({objImgUrl, svgRef, zoom, height}) => {
+const FeatureAnnotator: FC<FeatureAnnotatorProps> = ({
+                                                         objImgUrl, svgRef, rectRef,
+                                                         zoom, resetRect, height
+                                                     }) => {
     const gZoomRef = useRef<SVGGElement>(null);
     const gDragRef = useRef<SVGGElement>(null);
-    const rectRef = useRef<SVGRectElement>(null);
     const imgRef = useRef<SVGImageElement>(null);
 
     // global state (redux)
     const dispatch = useDispatch();
     const detObj: DetectedObject | undefined = useSelector((state: any) => state.object.detObj);
+    const feature: VisualFeature | undefined = useSelector((state: any) => state.feature.visualFeature);
     const conceptIdx: number | undefined = useSelector((state: any) => state.feature.conceptIdx);
-    const prevBboxs: BoundingBoxCoords[] | undefined = useSelector((state: any) => state.feature.bboxs);
+    const prevBboxs: BoundingBoxCoords[] = useSelector((state: any) => state.feature.bboxs);
     const bboxsVis: boolean[] = useSelector((state: any) => state.feature.bboxsVis);
     const showPrevBboxs: boolean = useSelector((state: any) => state.feature.showPrevInput);
     const isMoveImg: boolean = useSelector((state: any) => state.feature.isMoveObjImg);
 
-    let origWidth = detObj ? detObj.brx - detObj.tlx : 0
-    let origHeight = detObj ? detObj.bry - detObj.tly : 0
+    let origWidth = detObj ? detObj.brx - detObj.tlx : 1
+    let origHeight = detObj ? detObj.bry - detObj.tly : 1
     let pixelHeight = Math.max(500, height)
-    let pixelWidth: number = svgRef.current ? svgRef.current.width.baseVal.value : 0
+    let pixelWidth: number = svgRef.current ? svgRef.current.width.baseVal.value : 1
     let imgRatio = origWidth / origHeight
     let imgHeight = Math.max(500, height - (height / 10))
     let imgWidth = imgRatio * imgHeight
@@ -119,13 +125,9 @@ const FeatureAnnotator: FC<FeatureAnnotatorProps> = ({objImgUrl, svgRef, zoom, h
             };
             dispatch(setCurrBbox(bbox_repr))
         } else {
+            dispatch(clearFeatureBbox())
             resetRect();
         }
-    };
-
-    const resetRect = () => {
-        const myRect = d3.select(rectRef.current);
-        myRect.attr("width", 0).attr("height", 0);
     };
 
     const handleZoom = useCallback((e: d3.D3ZoomEvent<any, any>) => {
@@ -151,37 +153,67 @@ const FeatureAnnotator: FC<FeatureAnnotatorProps> = ({objImgUrl, svgRef, zoom, h
         }
     };
 
+    const createPrevBBoxElement = (bbox: BoundingBoxCoords, index: number) => {
+        if (bboxsVis[index]) {
+            let tlx = (bbox.tlx / widthRatio) + borderDistWidth;
+            let tly = (bbox.tly / heightRatio) + borderDistHeight;
+            let brx = (bbox.brx / widthRatio) + borderDistWidth;
+            let bry = (bbox.bry / heightRatio) + borderDistHeight;
+            return (<g key={'annoBbox' + index}>
+                <BoundingBox key={'bboxRect' + index} objIdx={index} opacity={0.3}
+                             color={'yellow'}
+                             tlx={tlx} tly={tly} brx={brx} bry={bry}/>
+            </g>)
+        }
+        return <Fragment key={'bboxPlaceholder' + index}></Fragment>
+    }
+
+    const createFeatureBBoxElement = (bbox: BoundingBoxCoords, index: number, conceptIdx: number) => {
+        if (bboxsVis[index]) {
+            let tlx = (bbox.tlx / widthRatio) + borderDistWidth;
+            let tly = (bbox.tly / heightRatio) + borderDistHeight;
+            let brx = (bbox.brx / widthRatio) + borderDistWidth;
+            let bry = (bbox.bry / heightRatio) + borderDistHeight;
+            return (<g key={'featBbox' + index}>
+                <BoundingBox key={'fbboxRect' + index} objIdx={index} opacity={0.3}
+                             color={CONCEPT_COLORS[conceptIdx]}
+                             tlx={tlx} tly={tly} brx={brx} bry={bry}/>
+                <BBoxText
+                    key={'fbboxText' + index}
+                    text={(index + 1).toString()}
+                    tlx={tlx} tly={tly} brx={brx} bry={bry}
+                    fontSize={Math.max(21, height / 30)}
+                />
+            </g>)
+        }
+        return <Fragment key={'featPlaceholder' + index}></Fragment>
+    }
+
     const bboxs = useMemo(() => {
-        if (prevBboxs && pixelWidth !== 0 && showPrevBboxs && conceptIdx !== undefined) {
-            return prevBboxs.map((bbox: BoundingBoxCoords, index: number) => {
-                if (bboxsVis[index]) {
-                    let tlx = (bbox.tlx / widthRatio) + borderDistWidth;
-                    let tly = (bbox.tly / heightRatio) + borderDistHeight;
-                    let brx = (bbox.brx / widthRatio) + borderDistWidth;
-                    let bry = (bbox.bry / heightRatio) + borderDistHeight;
-                    return (<g key={'annoBbox' + index}>
-                        <BoundingBox key={'bboxRect' + index} objIdx={index} opacity={0.3}
-                                     color={CONCEPT_COLORS[conceptIdx]}
-                                     tlx={tlx} tly={tly} brx={brx} bry={bry}/>
-                        <BBoxText
-                            key={'bboxText' + index}
-                            text={(index + 1).toString()}
-                            tlx={tlx} tly={tly} brx={brx} bry={bry}
-                            fontSize={Math.max(21, height / 30)}
-                        />
-                    </g>)
+        if (pixelWidth !== 0 && showPrevBboxs && conceptIdx !== undefined) {
+            let featListLen = feature?.bboxs!.length
+            if (featListLen) {
+                let bboxList: ReactJSXElement[];
+                bboxList = feature!.bboxs!.map((bbox: BoundingBoxCoords, index: number) =>
+                    createFeatureBBoxElement(bbox, index, conceptIdx))
+                if (prevBboxs.length > 0) {
+                    bboxList.concat(prevBboxs.map((bbox: BoundingBoxCoords, index: number) =>
+                        createPrevBBoxElement(bbox, featListLen! + index)))
                 }
-                return <></>
-            })
+                return bboxList
+            } else {
+                return prevBboxs.map((bbox: BoundingBoxCoords, index: number) =>
+                    createPrevBBoxElement(bbox, index))
+            }
         }
         return <></>
-    }, [prevBboxs, showPrevBboxs, pixelWidth])
+    }, [feature?.bboxs, prevBboxs, showPrevBboxs, bboxsVis, pixelWidth])
 
     useEffect(() => {
         if (svgRef.current) {
             setupZoom();
         }
-    }, [zoom, svgRef.current, handleZoom, isMoveImg]);
+    }, [objImgUrl, zoom, svgRef.current, handleZoom, isMoveImg]);
 
     return (
         <svg

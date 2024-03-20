@@ -21,6 +21,7 @@ import {useNavigate} from "react-router-dom";
 import {ImageDocument} from "../api/models/imgdoc";
 import {
     addConceptAt,
+    clearAnnotationView,
     removeConceptAt,
     setAnnotation,
     switchFeaturesVisible,
@@ -39,6 +40,8 @@ import ListItemText from "@mui/material/ListItemText";
 import VisibilityOffOutlinedIcon from "@mui/icons-material/VisibilityOffOutlined";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import DeleteIcon from "@mui/icons-material/Delete";
+import {clearObject} from "../reducers/objectSlice";
+import {clearDoc, disableAnnoMode} from "../reducers/idocSlice";
 
 
 const AnnotationControlPanel: FC = () => {
@@ -59,16 +62,24 @@ const AnnotationControlPanel: FC = () => {
     const conceptSubstrings: string[] | undefined = useSelector((state: any) => state.annotation.conceptSubstrings);
     const features: (VisualFeature | string)[] = useSelector((state: any) => state.annotation.features);
     const featuresVis: boolean[] = useSelector((state: any) => state.annotation.featuresVis);
+    const showFeats: boolean = useSelector((state: any) => state.annotation.showFeatures);
+    const showConcepts: boolean = useSelector((state: any) => state.annotation.showConcepts);
+    const hoverToggle: boolean = useSelector((state: any) => state.annotation.showHoverText);
     const isConceptExpanded: boolean = useSelector((state: any) => state.annotation.isConceptExpanded);
 
     const toProjectView = () => {
         if (project) {
+            dispatch(clearAnnotationView())
+            dispatch(clearObject())
+            dispatch(clearDoc())
+            dispatch(disableAnnoMode())
             navigate('/project/' + encodeURIComponent(project.title))
         }
     }
 
     const toObjectView = () => {
         if (project && idoc && objIdx !== undefined) {
+            dispatch(clearAnnotationView())
             navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}/${objIdx}`)
         }
     }
@@ -81,7 +92,6 @@ const AnnotationControlPanel: FC = () => {
         // TODO: open a confirmation dialog when clicking feature deletion that also makes it possible to
         //  to transfer bboxs of the deleted feature to another or a new concept.
         if (features && conceptSubstrings) {
-            console.log(features)
             return <List className="features" key="featureList">
                 {features.map((feature, index) => {
                     if (typeof feature === 'string') {
@@ -231,14 +241,16 @@ const AnnotationControlPanel: FC = () => {
             <Typography sx={{mb: 1, color: 'text.secondary'}}
                         variant='h5'>Annotation {annoIdx === undefined ? -1 : annoIdx + 1}</Typography>
             <FormGroup row sx={{ml: 1}}>
-                <FormControlLabel control={<Switch defaultChecked onChange={() => dispatch(toggleShowConcepts())}/>}
-                                  label="Show Concepts" sx={{mr: 16}}/>
-                <FormControlLabel control={<Switch defaultChecked onChange={() => dispatch(switchFeaturesVisible())}/>}
-                                  label="Show Features"/>
-                <FormControlLabel control={<Switch defaultChecked onChange={() => dispatch(toggleHoverText())}/>}
+                <FormControlLabel
+                    control={<Switch checked={showConcepts} onChange={() => dispatch(toggleShowConcepts())}/>}
+                    label="Show Concepts" sx={{mr: 16}}/>
+                <FormControlLabel
+                    control={<Switch checked={showFeats} onChange={() => dispatch(switchFeaturesVisible())}/>}
+                    label="Show Features"/>
+                <FormControlLabel control={<Switch checked={hoverToggle} onChange={() => dispatch(toggleHoverText())}/>}
                                   label="Hover Info above Concepts" sx={{mr: 6}}/>
                 <FormControlLabel
-                    control={<Switch defaultChecked={false} onChange={() => dispatch(toggleConceptExpanded())}/>}
+                    control={<Switch checked={isConceptExpanded} onChange={() => dispatch(toggleConceptExpanded())}/>}
                     label="Expand Concept Info"/>
             </FormGroup>
             <Divider sx={{my: 1}}/>

@@ -10,6 +10,9 @@ import AlertMessage from "../components/AlertMessage";
 import {useNavigate} from "react-router-dom";
 import {ImageDocument} from "../api/models/imgdoc";
 import {DetectedObject} from "../api/models/object";
+import {clearObject} from "../reducers/objectSlice";
+import {clearDoc, disableAnnoMode} from "../reducers/idocSlice";
+import {clearNewAnnoView} from "../reducers/annotationCreateSlice";
 
 
 const NewAnnotationControlPanel: FC = () => {
@@ -26,12 +29,17 @@ const NewAnnotationControlPanel: FC = () => {
 
     const toProjectView = () => {
         if (project) {
+            dispatch(clearNewAnnoView())
+            dispatch(clearObject())
+            dispatch(clearDoc())
+            dispatch(disableAnnoMode())
             navigate('/project/' + encodeURIComponent(project.title))
         }
     }
 
     const toObjectView = () => {
         if (project && idoc && objIdx !== undefined) {
+            dispatch(clearNewAnnoView())
             navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}/${objIdx}`)
         }
     }

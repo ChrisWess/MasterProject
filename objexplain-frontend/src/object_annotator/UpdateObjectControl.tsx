@@ -9,17 +9,18 @@ import Typography from "@mui/material/Typography";
 import AlertMessage from "../components/AlertMessage";
 import {useNavigate} from "react-router-dom";
 import {ImageDocument} from "../api/models/imgdoc";
-import {clearBbox, clearUpdObjectView, toggleMovable, toggleShowObjs} from "../reducers/objectCreateSlice";
-import LabelSelect from "./LabelSelector";
-import {clearDoc, disableAnnoMode} from "../reducers/idocSlice";
+import {clearUpdObjectView, toggleMovable, toggleShowObjs} from "../reducers/objectCreateSlice";
+import {clearDoc, disableAnnoMode, setDoc} from "../reducers/idocSlice";
+import {clearObject, setObject} from "../reducers/objectSlice";
+import {BoundingBoxCoords} from "../api/models/feature";
+import {putRequest} from "../api/requests";
 
 
-interface NewObjectControlProps {
-    resetRect: Function;
+interface UpdObjectControlProps {
     resetZoomCallback: Function;
 }
 
-const NewObjectControlPanel: FC<NewObjectControlProps> = ({resetRect, resetZoomCallback}) => {
+const UpdObjectControlPanel: FC<UpdObjectControlProps> = ({resetZoomCallback}) => {
     const [alertContent, setAlertContent] = useState<string>();
     const [alertSeverity, setAlertSeverity] = useState<string>();
 
@@ -28,58 +29,66 @@ const NewObjectControlPanel: FC<NewObjectControlProps> = ({resetRect, resetZoomC
     // global state (redux)
     const project: ProjectStats | undefined = useSelector((state: any) => state.mainPage.currProject);
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
+    const objIdx: number | undefined = useSelector((state: any) => state.object.objIdx);
+    const currBbox: BoundingBoxCoords | undefined = useSelector((state: any) => state.newObj.newBbox);
     const isMoveImg: boolean = useSelector((state: any) => state.newObj.isMoveImg);
     const showObjs: boolean = useSelector((state: any) => state.newObj.showCurrObjs);
 
     const toProjectView = () => {
         if (project) {
             dispatch(clearUpdObjectView())
-            dispatch(clearBbox())
+            dispatch(clearObject())
             dispatch(clearDoc())
             dispatch(disableAnnoMode())
             navigate('/project/' + encodeURIComponent(project.title))
         }
     }
 
-    const toImageView = () => {
-        if (project && idoc) {
+    const toObjectView = () => {
+        if (project && idoc && objIdx !== undefined) {
             dispatch(clearUpdObjectView())
-            navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}`)
+            navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}/${objIdx}`)
+        }
+    }
+
+    const submitBBoxUpdate = () => {
+        if (objIdx !== undefined && idoc?.objects && currBbox) {
+            let obj = idoc.objects[objIdx]
+            let bbox = [currBbox.tlx, currBbox.tly, currBbox.brx, currBbox.bry]
+            putRequest('object', {objectId: obj._id, bbox: bbox}).then(data => {
+                if (data && idoc?.objects) {
+                    let updObj = {...obj, ...currBbox}
+                    dispatch(setObject(updObj))
+                    let newObjs = idoc.objects
+                    newObjs = [...newObjs.slice(0, objIdx), updObj, ...newObjs.slice(objIdx + 1)]
+                    let updDoc = {...idoc, objects: newObjs}
+                    dispatch(setDoc(updDoc))
+                    setAlertContent('Updated Object Bounding Box!')
+                    toObjectView()
+                }
+            })
         }
     }
 
     return (
         <Box sx={{height: '100%', overflow: 'auto'}}>
             <Box sx={{display: 'flex', mb: 0.5}}>
-                <IconButton sx={{fontSize: 16, width: 140, color: 'secondary.dark'}} onClick={toImageView}>
+                <IconButton sx={{fontSize: 16, width: 140, color: 'secondary.dark'}} onClick={toObjectView}>
                     <ArrowLeftIcon sx={{fontSize: 30, ml: -1}}/> Back</IconButton>
                 <IconButton sx={{fontSize: 16, width: 140, color: 'secondary.dark'}} onClick={toProjectView}>
                     <ArrowDropUpIcon sx={{fontSize: 30, ml: -1}}/> Project</IconButton>
             </Box>
-            <Typography sx={{mb: 1, color: 'text.secondary'}} variant='h5'>Create new
-                Object {idoc && idoc.objects && idoc.objects.length + 1}</Typography>
+            <Typography sx={{mb: 1, color: 'text.secondary'}} variant='h5'>
+                Select new Bounding Box for Object {objIdx !== undefined && objIdx + 1}</Typography>
             <FormGroup row sx={{ml: 1}}>
                 <FormControlLabel control={<Switch checked={showObjs} onChange={() => dispatch(toggleShowObjs())}/>}
-                                  label="Show Objects" sx={{mr: 6}}/>
+                                  label="Show Other Objects" sx={{mr: 6}}/>
             </FormGroup>
             <Divider sx={{my: 1}}/>
-            <Typography sx={{mb: 0.5, color: 'primary'}} variant='subtitle1'>Instructions:</Typography>
-            <Typography sx={{mb: 0.2, color: 'primary.light'}} variant='subtitle2'>Drag over the image with your cursor
-                to create a Bounding Box of an object.</Typography>
-            <Typography sx={{mb: 0.2, color: 'primary.light'}} variant='subtitle2'>Write or select a label that best
-                describes the object in your bounding box.</Typography>
-            <Typography sx={{mb: 0.2, color: 'primary.light'}} variant='subtitle2'>If you create a new class label, you
-                must add at least one category for the label, in which the object falls into (e.g. bird, car, ship
-                etc.).</Typography>
-            <Typography sx={{mb: 0.2, color: 'primary.light'}} variant='subtitle2'>Click "Insert Object" to add the
-                object to the image.</Typography>
-            <Divider sx={{my: 1}}/>
-            <LabelSelect labelCaption="Select Object Label and Categories" labelButtonText='Insert Object'
-                         categoriesDescriptor='Choose for Categories for this Object Label: ' categoryButtonText='Add'
-                         params={{resetRect: resetRect}} makeNewObject
-                         categoriesCaption='Currently assigned Label Categories (min. 1 category required):'
-                         setAlertContent={setAlertContent} setAlertSeverity={setAlertSeverity}/>
-            <Divider sx={{my: 1}}/>
+            <Button variant="contained" sx={{width: '100%', textTransform: 'none', mb: 2}}
+                    disabled={!currBbox} onClick={submitBBoxUpdate}>
+                Update Bounding Box to current Selection
+            </Button>
             <ButtonGroup sx={{width: '100%', bottom: 5}}>
                 <Button onClick={() => dispatch(toggleMovable())} variant={isMoveImg ? "contained" : "outlined"}
                         sx={{flexGrow: 50}}>
@@ -95,4 +104,4 @@ const NewObjectControlPanel: FC<NewObjectControlProps> = ({resetRect, resetZoomC
     )
 }
 
-export default NewObjectControlPanel
+export default UpdObjectControlPanel

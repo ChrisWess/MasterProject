@@ -1,31 +1,33 @@
 import * as d3 from "d3";
 import {ZoomBehavior} from "d3";
-import {FC, RefObject, useCallback, useEffect, useMemo, useRef, useState} from "react";
+import {FC, Fragment, RefObject, useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {useDispatch, useSelector} from "react-redux";
 import BoundingBox from "./BBox";
 import BBoxText from "./BBoxText";
 import {DetectedObject} from "../../api/models/object";
 import {ImageDocument} from "../../api/models/imgdoc";
-import {setBbox} from "../../reducers/objectCreateSlice";
+import {clearBbox, setBbox} from "../../reducers/objectCreateSlice";
 import {Label} from "../../api/models/label";
 import {BBOX_COLORS} from "../../document/ProjectIDocPage";
 
 interface ImageAnnotatorProps {
     svgRef: RefObject<SVGSVGElement>;
+    rectRef: RefObject<SVGRectElement>;
     zoom: ZoomBehavior<SVGSVGElement, unknown>;
+    resetRect: Function;
     height: number;
 }
 
-const ImageAnnotator: FC<ImageAnnotatorProps> = ({svgRef, zoom, height}) => {
+const ImageAnnotator: FC<ImageAnnotatorProps> = ({svgRef, rectRef, zoom, resetRect, height}) => {
     const gZoomRef = useRef<SVGGElement>(null);
     const gDragRef = useRef<SVGGElement>(null);
-    const rectRef = useRef<SVGRectElement>(null);
     const imgRef = useRef<SVGImageElement>(null);
 
     // global state (redux)
     const dispatch = useDispatch();
     const labelsMap: [string, Label][] | undefined = useSelector((state: any) => state.iDoc.labelMap);
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
+    const objIdx: number | undefined = useSelector((state: any) => state.object.objIdx);
     const imgUrl: string | undefined = useSelector((state: any) => state.iDoc.imgUrl);
     const showObjs: boolean = useSelector((state: any) => state.newObj.showCurrObjs);
     const isMoveImg: boolean = useSelector((state: any) => state.newObj.isMoveImg);
@@ -130,13 +132,9 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({svgRef, zoom, height}) => {
             };
             dispatch(setBbox(bbox_repr))
         } else {
+            dispatch(clearBbox())
             resetRect();
         }
-    };
-
-    const resetRect = () => {
-        const myRect = d3.select(rectRef.current);
-        myRect.attr("width", 0).attr("height", 0);
     };
 
     const handleZoom = useCallback((e: d3.D3ZoomEvent<any, any>) => {
@@ -176,6 +174,9 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({svgRef, zoom, height}) => {
     const bboxs = useMemo(() => {
         if (idoc?.objects && pixelWidth !== 0) {
             return idoc.objects.map((obj: DetectedObject, index: number) => {
+                if (objIdx !== undefined && objIdx === index) {
+                    return <Fragment key='currObjPH'></Fragment>
+                }
                 let tlx = (obj.tlx / widthRatio) + borderDistWidth;
                 let tly = (obj.tly / heightRatio) + borderDistHeight;
                 let brx = (obj.brx / widthRatio) + borderDistWidth;
@@ -196,13 +197,13 @@ const ImageAnnotator: FC<ImageAnnotatorProps> = ({svgRef, zoom, height}) => {
             })
         }
         return <></>
-    }, [idoc?.objects, showObjs, labelsMap, pixelWidth])
+    }, [idoc?.objects, showObjs, labelsMap, pixelWidth, objIdx])
 
     useEffect(() => {
         if (svgRef.current) {
             setupZoom();
         }
-    }, [zoom, svgRef, handleZoom, isMoveImg]);
+    }, [imgUrl, zoom, svgRef.current, handleZoom, isMoveImg]);
 
     return (
         <svg
