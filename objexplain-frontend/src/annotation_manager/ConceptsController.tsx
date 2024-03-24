@@ -1,5 +1,5 @@
-import {FC, useEffect, useMemo, useState} from "react";
-import {Box, Divider, List, ListItem, ListItemIcon} from "@mui/material";
+import {FC, useEffect, useMemo} from "react";
+import {Box, ButtonGroup, Divider, List, ListItem, ListItemIcon} from "@mui/material";
 import Typography from "@mui/material/Typography";
 import {Concept} from "../api/models/concept";
 import ListItemButton from "@mui/material/ListItemButton";
@@ -10,7 +10,16 @@ import {CorpusWord} from "../api/models/corpus";
 import PhraseChip from "./PhraseChip";
 import ButtonTextfield from "../components/ButtonTextfield";
 import {useDispatch, useSelector} from "react-redux";
-import {addAdjective, addFullConcept, addNoun} from "../reducers/annotationCreateSlice";
+import {
+    addAdjective,
+    addNewConceptDraft,
+    addNoun,
+    addSelectedConcept,
+    selectConceptIdx,
+    setSuggestedAdjectives,
+    setSuggestedConcepts,
+    setSuggestedNouns
+} from "../reducers/annotationCreateSlice";
 import Button from "@mui/material/Button";
 
 
@@ -33,24 +42,12 @@ export const loadSuggestedNouns = async () => {
 
 
 const ConceptsController: FC = () => {
-    const [selectedConceptIdx, setSelectedConceptIdx] = useState<number>();
-    const [conceptsUsed, setConceptsUsed] = useState<boolean[]>();
-    const [concepts, setConcepts] = useState<Concept[]>();
-    const [adjectives, setAdjectives] = useState<CorpusWord[]>();
-    const [nouns, setNouns] = useState<CorpusWord[]>();
-
     const dispatch = useDispatch();
-    const concNouns: string[][] = useSelector((state: any) => state.newAnno.nouns);
-
-    const submitConceptClick = () => {
-        if (selectedConceptIdx !== undefined && concepts && conceptsUsed && !conceptsUsed[selectedConceptIdx]) {
-            dispatch(addFullConcept(concepts[selectedConceptIdx]))
-            let usedConcepts = [...conceptsUsed];
-            usedConcepts[selectedConceptIdx] = true;
-            setConceptsUsed(usedConcepts);
-            setSelectedConceptIdx(undefined);
-        }
-    }
+    const selectedConceptIdx: number | undefined = useSelector((state: any) => state.newAnno.selectedConceptIdx);
+    const conceptsUsed: boolean[] | undefined = useSelector((state: any) => state.newAnno.conceptsSelected);
+    const concepts: Concept[] | undefined = useSelector((state: any) => state.newAnno.suggestedConcepts);
+    const adjectives: CorpusWord[] | undefined = useSelector((state: any) => state.newAnno.suggestedAdjectives);
+    const nouns: CorpusWord[] | undefined = useSelector((state: any) => state.newAnno.suggestedNouns);
 
     const suggestedConcepts = useMemo(() => {
         return (<List className="suggestedConcepts" key="suggestionList"
@@ -62,7 +59,7 @@ const ConceptsController: FC = () => {
                               bgcolor: (selectedConceptIdx !== undefined && selectedConceptIdx === index) ? '#405540' : ''
                           }}>
                     <ListItemButton key={'concSelectButt' + index} sx={{py: 0}}
-                                    onClick={() => setSelectedConceptIdx(index)}
+                                    onClick={() => dispatch(selectConceptIdx(index))}
                                     disabled={conceptsUsed[index]}>
                         <ListItemIcon sx={{color: 'text.secondary', mr: 2}} key={'concSelectIcon' + index}>
                             {index + 1}
@@ -139,16 +136,10 @@ const ConceptsController: FC = () => {
     }, [nouns])
 
     useEffect(() => {
-        loadSuggestedConcepts().then(data => data && setConcepts(data.result))
-        loadSuggestedAdjectives().then(data => data && setAdjectives(data.result))
-        loadSuggestedNouns().then(data => data && setNouns(data.result))
+        !concepts && loadSuggestedConcepts().then(data => data && dispatch(setSuggestedConcepts(data.result)))
+        !adjectives && loadSuggestedAdjectives().then(data => data && dispatch(setSuggestedAdjectives(data.result)))
+        !nouns && loadSuggestedNouns().then(data => data && dispatch(setSuggestedNouns(data.result)))
     }, []);
-
-    useEffect(() => {
-        if (concepts && concepts.length > 0 && concNouns.length === 0) {
-            setConceptsUsed(Array(concepts.length).fill(false));
-        }
-    }, [concepts, concNouns]);
 
     return <>
         <Typography variant='h6'>Select suggested Concepts or build new ones</Typography>
@@ -158,10 +149,16 @@ const ConceptsController: FC = () => {
         <Box sx={{height: '145px', overflow: 'auto', border: '2px solid', mb: 0.5, borderColor: '#161616'}}>
             {suggestedConcepts}
         </Box>
-        <Button sx={{textTransform: 'none', fontSize: '12pt', width: '70%', height: '30px', mb: 1}}
-                variant='contained' onClick={submitConceptClick}>
-            <b>Add Concept to your Annotation</b>
-        </Button>
+        <ButtonGroup sx={{width: '100%', height: '30px', mb: 1}}>
+            <Button sx={{textTransform: 'none', fontSize: '12pt', width: '49.5%', mr: 1}}
+                    variant='contained' onClick={() => dispatch(addSelectedConcept())}>
+                <b>Add Concept to Annotation</b>
+            </Button>
+            <Button sx={{textTransform: 'none', fontSize: '12pt', width: '49.5%'}}
+                    variant='contained' onClick={() => dispatch(addNewConceptDraft())}>
+                <b>New empty Concept Draft</b>
+            </Button>
+        </ButtonGroup>
         <Divider sx={{mb: 1}}/>
         <Typography variant='h6' sx={{mb: 1}}>Build a custom concept:</Typography>
         {suggestedAdjectives}

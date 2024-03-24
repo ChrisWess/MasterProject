@@ -62,7 +62,6 @@ const NewAnnotationControlPanel: FC = () => {
 
     // TODO: allow saving how often an annotation has been selected in "Text Writer".
     //  Present annotations that are selected often for a type of object more often to users.
-    //  Append selected annotation to the text areas' current text.
     return (
         <Box sx={{height: '100%', overflow: 'auto'}}>
             <Box sx={{display: 'flex', mb: 0.5}}>
