@@ -41,6 +41,16 @@ export const newAnnotationPageSlice = createSlice({
             state.nounIdxs = []
             state.conceptEditIdx = 0
         },
+        clearSuggestedText: (state) => {
+            state.suggestedText = undefined
+        },
+        clearConcepts: (state) => {
+            state.adjectives = []
+            state.nouns = []
+            state.adjectiveIdxs = []
+            state.nounIdxs = []
+            state.conceptEditIdx = 0
+        },
         setMode: (state, action: PayloadAction<number>) => {
             state.modeId = action.payload;
         },
@@ -60,16 +70,27 @@ export const newAnnotationPageSlice = createSlice({
             state.nouns = nounArr;
             state.adjectiveIdxs = aidxs;
             state.nounIdxs = nidxs;
-            state.conceptEditIdx = state.conceptEditIdx + 1;
         },
         addAdjective: (state, action: PayloadAction<[string, number]>) => {
             let adjective = action.payload[0];
             let idx = action.payload[1];
-            let adjArr = state.adjectives
+            let adjArr = state.adjectives;
             let aidxs = state.adjectiveIdxs;
-            adjArr[state.conceptEditIdx].push(adjective)
+            let editIdx = state.conceptEditIdx;
+            if (!editIdx && adjArr.length === 0) {
+                let nounArr = state.nouns;
+                let nidxs = state.nounIdxs;
+                adjArr.push([adjective])
+                aidxs.push([idx])
+                nounArr.push([])
+                nidxs.push([])
+                state.nouns = nounArr;
+                state.nounIdxs = nidxs;
+            } else {
+                adjArr[editIdx].push(adjective)
+                aidxs[editIdx].push(idx);
+            }
             state.adjectives = adjArr
-            aidxs[state.conceptEditIdx].push(idx);
             state.adjectiveIdxs = aidxs;
         },
         addNoun: (state, action: PayloadAction<[string, number]>) => {
@@ -77,9 +98,21 @@ export const newAnnotationPageSlice = createSlice({
             let idx = action.payload[1];
             let nounArr = state.nouns
             let nidxs = state.nounIdxs;
-            nounArr[state.conceptEditIdx].push(noun)
-            state.nouns = nounArr
-            nidxs[state.conceptEditIdx].push(idx);
+            let editIdx = state.conceptEditIdx;
+            if (!editIdx && nounArr.length === 0) {
+                let adjArr = state.adjectives;
+                let aidxs = state.adjectiveIdxs;
+                adjArr.push([])
+                aidxs.push([])
+                nounArr.push([noun])
+                nidxs.push([idx])
+                state.adjectives = adjArr;
+                state.adjectiveIdxs = aidxs;
+            } else {
+                nounArr[editIdx].push(noun)
+                nidxs[editIdx].push(idx);
+            }
+            state.nouns = nounArr;
             state.nounIdxs = nidxs;
         },
         resetDraft: (state) => {
@@ -93,15 +126,15 @@ export const newAnnotationPageSlice = createSlice({
             let adjs = state.adjectives;
             let nouns = state.nouns;
             let conceptTokens = concept.phraseWords
-            let nounsStart = concept.nounCount - conceptTokens.length
+            let nounsStart = conceptTokens.length - concept.nounCount
             adjs.push(conceptTokens.slice(0, nounsStart))
-            nouns.push(conceptTokens.slice(nounsStart + 1))
+            nouns.push(conceptTokens.slice(nounsStart))
             state.adjectives = adjs;
             state.nouns = nouns;
             let aidxs = state.adjectiveIdxs;
             let nidxs = state.nounIdxs;
             aidxs.push(concept.phraseIdxs.slice(0, nounsStart))
-            nidxs.push(concept.phraseIdxs.slice(nounsStart + 1))
+            nidxs.push(concept.phraseIdxs.slice(nounsStart))
             state.adjectiveIdxs = aidxs;
             state.nounIdxs = nidxs;
         },
@@ -113,11 +146,11 @@ export const newAnnotationPageSlice = createSlice({
             let nidxs = state.nounIdxs;
             concepts.map(concept => {
                 let conceptTokens = concept.phraseWords
-                let nounsStart = concept.nounCount - conceptTokens.length
+                let nounsStart = conceptTokens.length - concept.nounCount
                 adjs.push(conceptTokens.slice(0, nounsStart))
-                nouns.push(conceptTokens.slice(nounsStart + 1))
+                nouns.push(conceptTokens.slice(nounsStart))
                 aidxs.push(concept.phraseIdxs.slice(0, nounsStart))
-                nidxs.push(concept.phraseIdxs.slice(nounsStart + 1))
+                nidxs.push(concept.phraseIdxs.slice(nounsStart))
             })
             state.adjectives = adjs;
             state.nouns = nouns;
@@ -129,8 +162,8 @@ export const newAnnotationPageSlice = createSlice({
 
 // actions
 export const {
-    setMode, setSuggestedText, clearNewAnnoView,
-    addNewConceptDraft, addAdjective, addNoun,
+    setMode, setSuggestedText, clearNewAnnoView, clearConcepts,
+    clearSuggestedText, addNewConceptDraft, addAdjective, addNoun,
     setConceptEditIdx, addFullConcept, addFullConcepts,
 } = newAnnotationPageSlice.actions;
 

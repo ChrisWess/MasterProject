@@ -101,7 +101,7 @@ export const postRequest = async (urlPath: string, postData: any, contentType: s
                 params: params,
             },
         )
-        if (data.status === 201) {
+        if (data.status === 200 || data.status === 201) {
             return data
         } else if (data.status === 401) {
             window.location.href = baseUrl + loginEndpoint

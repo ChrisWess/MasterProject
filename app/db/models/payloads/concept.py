@@ -15,7 +15,7 @@ class ConceptPayload(TimestampPayload):
     phrase_idxs: Optional[list[int]] = Field(default=None, alias="phraseIdxs")
     phrase_word_data: Optional[list[WordPayload]] = Field(default=None, alias="phraseWordsData")
     phrase_words: Optional[list[str]] = Field(default=None, alias="phraseWords")
-    noun_count: Optional[bool] = Field(default=None, alias="nounCount")
+    noun_count: Optional[int] = Field(default=None, alias="nounCount")
     conv_filter_idx: Optional[int] = Field(default=None, alias="convFilterIdx")
 
     class Config:

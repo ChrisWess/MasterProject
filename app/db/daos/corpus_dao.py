@@ -138,15 +138,20 @@ class CorpusDAO(BaseDAO):
         self._query_matcher['lemma'] = lemma
         res = self._find_word_by_lemmas(word, lemma, is_noun, db_session)
         if isinstance(res, dict):
+            if generate_response:
+                return self.to_response(res)
             return False, res  # The word already exists in the database
         self._query_matcher.clear()
         if res == -1:
             res = CorpusIndexManager().get_incremented_index(db_session)
         word = CorpusWord(index_val=res, text=word, lemma=lemma, stem=stem, noun_flag=is_noun)
+        inserted = self.insert_doc(word, generate_response=False, db_session=db_session)[1]
         if generate_response:
-            return self.insert_doc(word, db_session=db_session)
+            response = self.to_response(inserted, BaseDAO.CREATE, validate=False)
+            response['result'] = self.payload_model(**inserted).to_dict()
+            return response
         else:
-            return True, self.insert_doc(word, generate_response=False, db_session=db_session)[1]
+            return True, inserted
 
     @staticmethod
     def _check_insert_args_for_duplicates(w, lem, is_noun, result_list):

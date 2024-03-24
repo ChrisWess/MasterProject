@@ -15,6 +15,7 @@ def find_adjectives():
     corpus = CorpusDAO()
     if 'limit' in args:
         corpus.limit(int(args['limit']))
+        args = tuple(arg for arg in args.keys() if arg != 'limit')
     return corpus.find_all_adjectives(projection=args, generate_response=True)
 
 
@@ -24,6 +25,7 @@ def find_nouns():
     corpus = CorpusDAO()
     if 'limit' in args:
         corpus.limit(int(args['limit']))
+        args = tuple(arg for arg in args.keys() if arg != 'limit')
     return corpus.find_all_nouns(projection=args, generate_response=True)
 
 

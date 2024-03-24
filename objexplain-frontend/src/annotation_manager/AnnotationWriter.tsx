@@ -5,8 +5,7 @@ import {styled} from '@mui/system';
 import {blue, grey} from "@mui/material/colors";
 import {useDispatch, useSelector} from "react-redux";
 import {Annotation} from "../api/models/annotation";
-import {clearNewAnnoView} from "../reducers/annotationCreateSlice";
-import {Concept} from "../api/models/concept";
+import {clearSuggestedText} from "../reducers/annotationCreateSlice";
 
 
 const Textarea = styled(BaseTextareaAutosize)(
@@ -68,19 +67,22 @@ const AnnotationWriter: FC<AnnotationWriterProps> = ({value, index, ...other}) =
         hidden={value !== index}
         id={'anno-writer'}
         aria-labelledby={'anno-writer'}
-        style={{width: '1000px'}}
+        style={{width: '1100px'}}
         {...other}
     >
         {value === index && <Box sx={{p: 1}}>
             <Textarea aria-label="annotation textarea" minRows={3} value={annoText} onChange={handleTextAreaChange}
-                      sx={{minWidth: '100%', maxWidth: '100%', maxHeight: 100, minHeight: 60}}
+                      sx={{minWidth: '100%', maxWidth: '100%', maxHeight: 140, minHeight: 85, fontSize: '13pt'}}
                       placeholder="Write your annotation by describing all characteristics of the shown object"/>
             <Box sx={{display: 'float'}}>
-                <Button sx={{width: '30%', float: 'right'}} onClick={() => dispatch(clearNewAnnoView())}>Clear all Inputs</Button>
                 <Button sx={{width: '30%', float: 'right'}} onClick={() => {
                     // TODO: submit annotation to backend, write result into newAnnotation state and
                     //   then switch state to AnnotationViewer (modeId = 2)
                 }}>Submit Annotation</Button>
+                <Button sx={{width: '30%', float: 'right'}} onClick={() => {
+                    dispatch(clearSuggestedText())
+                    setAnnoText('')
+                }}>Wipe Text</Button>
             </Box>
         </Box>}
     </div>

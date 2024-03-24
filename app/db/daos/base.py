@@ -898,8 +898,8 @@ class BaseDAO(AbstractDAO):
         :param db_session:
         :return: List of all DB entity model objects
         """
+        projection = self.build_projection(projection)
         if get_cursor:
-            projection = self.build_projection(projection)
             projection_copy = deepcopy(projection) if projection else projection
             result = self.collection.find(self._query_matcher, projection_copy, session=db_session)
             result = self._apply_sort_limit(result, True)

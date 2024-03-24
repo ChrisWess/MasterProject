@@ -90,9 +90,11 @@ const NewAnnotationControlPanel: FC = () => {
                 </TabPanel>
                 <TabPanel value={modeId} index={2}>
                     <>
-                        <Typography variant='h5'>Inspect and verify your new annotation</Typography>
+                        <Typography variant='h5'>Inspect and verify/finalize your new annotation</Typography>
                         <Typography variant='subtitle1'>Show list of concepts here and show the highlighted annotation
-                            in the lower right panel.</Typography>
+                            in the lower right panel. You may also switch back to the other tabs to adjust and resubmit
+                            the annotation.
+                        </Typography>
                     </>
                 </TabPanel>
             </Box>
