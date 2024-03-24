@@ -4,6 +4,7 @@ import {Concept} from "../api/models/concept";
 
 interface NewAnnotationPageState {
     modeId: number;
+    suggestedText: string | undefined;
     newAnnotation: Annotation | undefined;
     conceptRanges: [number, number][] | undefined;
     adjectives: string[][];
@@ -15,6 +16,7 @@ interface NewAnnotationPageState {
 
 const initialState: NewAnnotationPageState = {
     modeId: 0,
+    suggestedText: undefined,
     newAnnotation: undefined,
     conceptRanges: undefined,
     adjectives: [],
@@ -28,11 +30,22 @@ export const newAnnotationPageSlice = createSlice({
     name: "newAnno",
     initialState,
     reducers: {
+        clearNewAnnoView: (state) => {
+            state.modeId = 0;
+            state.suggestedText = undefined
+            state.newAnnotation = undefined
+            state.conceptRanges = undefined
+            state.adjectives = []
+            state.nouns = []
+            state.adjectiveIdxs = []
+            state.nounIdxs = []
+            state.conceptEditIdx = 0
+        },
         setMode: (state, action: PayloadAction<number>) => {
             state.modeId = action.payload;
         },
-        clearNewAnnoView: (state) => {
-            state.modeId = 0;
+        setSuggestedText: (state, action: PayloadAction<string>) => {
+            state.suggestedText = action.payload;
         },
         addNewConceptDraft: (state) => {
             let adjArr = state.adjectives;
@@ -69,6 +82,9 @@ export const newAnnotationPageSlice = createSlice({
             nidxs[state.conceptEditIdx].push(idx);
             state.nounIdxs = nidxs;
         },
+        resetDraft: (state) => {
+            // TODO
+        },
         setConceptEditIdx: (state, action: PayloadAction<number>) => {
             state.conceptEditIdx = action.payload;
         },
@@ -89,13 +105,33 @@ export const newAnnotationPageSlice = createSlice({
             state.adjectiveIdxs = aidxs;
             state.nounIdxs = nidxs;
         },
+        addFullConcepts: (state, action: PayloadAction<Concept[]>) => {
+            let concepts = action.payload;
+            let adjs = state.adjectives;
+            let nouns = state.nouns;
+            let aidxs = state.adjectiveIdxs;
+            let nidxs = state.nounIdxs;
+            concepts.map(concept => {
+                let conceptTokens = concept.phraseWords
+                let nounsStart = concept.nounCount - conceptTokens.length
+                adjs.push(conceptTokens.slice(0, nounsStart))
+                nouns.push(conceptTokens.slice(nounsStart + 1))
+                aidxs.push(concept.phraseIdxs.slice(0, nounsStart))
+                nidxs.push(concept.phraseIdxs.slice(nounsStart + 1))
+            })
+            state.adjectives = adjs;
+            state.nouns = nouns;
+            state.adjectiveIdxs = aidxs;
+            state.nounIdxs = nidxs;
+        },
     }
 });
 
 // actions
 export const {
-    setMode, clearNewAnnoView, addNewConceptDraft, addAdjective,
-    addNoun, setConceptEditIdx, addFullConcept,
+    setMode, setSuggestedText, clearNewAnnoView,
+    addNewConceptDraft, addAdjective, addNoun,
+    setConceptEditIdx, addFullConcept, addFullConcepts,
 } = newAnnotationPageSlice.actions;
 
 export default newAnnotationPageSlice.reducer;

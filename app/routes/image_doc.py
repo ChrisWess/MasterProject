@@ -17,7 +17,7 @@ def find_docs():
     img_dao = ImgDocDAO()
     if 'limit' in args:
         img_dao.limit(int(args['limit']))
-    return img_dao.find_all(projection=request.args, generate_response=True)
+    return img_dao.find_all(projection=args, generate_response=True)
 
 
 @application.route('/idoc/full', defaults={'depth': 1}, methods=['GET'])

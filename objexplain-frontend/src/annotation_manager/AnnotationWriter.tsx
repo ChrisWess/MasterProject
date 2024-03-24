@@ -1,10 +1,12 @@
-import {FC} from "react";
+import {ChangeEvent, FC, useEffect, useState} from "react";
 import {Box, Button} from "@mui/material";
 import {TextareaAutosize as BaseTextareaAutosize} from '@mui/base/TextareaAutosize';
 import {styled} from '@mui/system';
 import {blue, grey} from "@mui/material/colors";
 import {useDispatch, useSelector} from "react-redux";
 import {Annotation} from "../api/models/annotation";
+import {clearNewAnnoView} from "../reducers/annotationCreateSlice";
+import {Concept} from "../api/models/concept";
 
 
 const Textarea = styled(BaseTextareaAutosize)(
@@ -46,10 +48,21 @@ interface AnnotationWriterProps {
 
 
 const AnnotationWriter: FC<AnnotationWriterProps> = ({value, index, ...other}) => {
+    const [annoText, setAnnoText] = useState<string>('');
 
     const dispatch = useDispatch();
+    const suggestedText: string | undefined = useSelector((state: any) => state.newAnno.suggestedText);
     const annotation: Annotation | undefined = useSelector((state: any) => state.newAnno.newAnnotation);
     const conceptRanges: [number, number][] | undefined = useSelector((state: any) => state.newAnno.conceptRanges);
+
+    const handleTextAreaChange = (event: ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+        event.preventDefault();
+        setAnnoText(event.target.value);
+    }
+
+    useEffect(() => {
+        suggestedText && setAnnoText(annoText + suggestedText)
+    }, [suggestedText]);
 
     return <div
         hidden={value !== index}
@@ -59,13 +72,16 @@ const AnnotationWriter: FC<AnnotationWriterProps> = ({value, index, ...other}) =
         {...other}
     >
         {value === index && <Box sx={{p: 1}}>
-            <Textarea aria-label="annotation textarea" minRows={3}
+            <Textarea aria-label="annotation textarea" minRows={3} value={annoText} onChange={handleTextAreaChange}
                       sx={{minWidth: '100%', maxWidth: '100%', maxHeight: 100, minHeight: 60}}
                       placeholder="Write your annotation by describing all characteristics of the shown object"/>
-            <Button sx={{width: '30%', float: 'right'}} onClick={() => {
-                // TODO: submit annotation to backend, write result into newAnnotation state and
-                //   then switch state to AnnotationViewer (modeId = 2)
-            }}>Submit Annotation</Button>
+            <Box sx={{display: 'float'}}>
+                <Button sx={{width: '30%', float: 'right'}} onClick={() => dispatch(clearNewAnnoView())}>Clear all Inputs</Button>
+                <Button sx={{width: '30%', float: 'right'}} onClick={() => {
+                    // TODO: submit annotation to backend, write result into newAnnotation state and
+                    //   then switch state to AnnotationViewer (modeId = 2)
+                }}>Submit Annotation</Button>
+            </Box>
         </Box>}
     </div>
 }

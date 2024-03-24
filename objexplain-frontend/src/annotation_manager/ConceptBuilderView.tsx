@@ -1,29 +1,11 @@
 import {FC, useMemo} from "react";
-import {Box, Chip, List, ListItem, ListItemIcon} from "@mui/material";
+import {Box, List, ListItem, ListItemIcon} from "@mui/material";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import Typography from "@mui/material/Typography";
 import {useDispatch, useSelector} from "react-redux";
 import {setConceptEditIdx} from "../reducers/annotationCreateSlice";
-import Tooltip from "@mui/material/Tooltip";
-
-
-interface PhraseChipProps {
-    token: string;
-    phraseIdx: number;
-    isNoun: boolean;
-    handleDelete: any;
-}
-
-
-const PhraseChip: FC<PhraseChipProps> = ({token, phraseIdx, isNoun, handleDelete}) => {
-    token = isNoun ? token.charAt(0).toUpperCase() + token.substring(1).toLowerCase() : token.toLowerCase()
-    // TODO: nouns clickable to select root noun?
-    return <Tooltip title={'phrase word ' + phraseIdx}>
-        <Chip label={token} variant="outlined" color={isNoun ? 'primary' : 'success'}
-              onDelete={handleDelete}/>
-    </Tooltip>
-}
+import PhraseChip from "./PhraseChip";
 
 
 interface ConceptBuilderProps {

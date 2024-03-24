@@ -42,6 +42,7 @@ const ObjectControlPanel: FC = () => {
     const objectLabel: Label | undefined = useSelector((state: any) => state.object.objectLabel);
 
     const annoList = useMemo(() => {
+        // TODO: why do I not get the detObj state? Any good reason? Check if it is defined in ObjectPage!
         let objs = idoc?.objects;
         if (objs && objIdx !== undefined) {
             let annos = objs[objIdx].annotations

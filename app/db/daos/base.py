@@ -575,8 +575,6 @@ class BaseDAO(AbstractDAO):
             templ.clear()
         for templ in self._field_ops_map.values():
             templ.clear()
-        self._skip_results = None
-        self._limit_results = None
         if self._regex_search_flag:
             self._regex_search['$regex'] = None
             self._regex_search['$options'] = ''
@@ -587,7 +585,6 @@ class BaseDAO(AbstractDAO):
             self._apply_search_flag = False
         self._negation.clear()
         self._query_matcher.clear()
-        self._sort_list.clear()
 
     def limit(self, num_docs):
         self._limit_results = num_docs
@@ -613,6 +610,9 @@ class BaseDAO(AbstractDAO):
             docs = docs.skip(self._skip_results)
         if self._limit_results:
             docs = docs.limit(self._limit_results)
+        self._skip_results = None
+        self._limit_results = None
+        self._sort_list.clear()
         return docs
 
     def group_by(self, acc_field_name, accumulator=None, group_at_id=None):

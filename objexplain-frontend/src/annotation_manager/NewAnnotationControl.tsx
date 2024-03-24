@@ -14,6 +14,9 @@ import {clearObject} from "../reducers/objectSlice";
 import {clearDoc, disableAnnoMode} from "../reducers/idocSlice";
 import {clearNewAnnoView, setMode} from "../reducers/annotationCreateSlice";
 import TabPanel from "../components/TabPanel";
+import {Annotation} from "../api/models/annotation";
+import ConceptsController from "./ConceptsController";
+import AnnoWriteController from "./AnnoWriteController";
 
 
 const NewAnnotationControlPanel: FC = () => {
@@ -28,6 +31,7 @@ const NewAnnotationControlPanel: FC = () => {
     const objIdx: number | undefined = useSelector((state: any) => state.object.objIdx);
     const detObj: DetectedObject | undefined = useSelector((state: any) => state.object.detObj);
     const modeId: number = useSelector((state: any) => state.newAnno.modeId);
+    const annotation: Annotation | undefined = useSelector((state: any) => state.newAnno.newAnnotation);
 
     const toProjectView = () => {
         if (project) {
@@ -75,29 +79,14 @@ const NewAnnotationControlPanel: FC = () => {
                     <Tabs value={modeId} onChange={handleChange} aria-label="annotation type tabs">
                         <Tab label="Text Writer"/>
                         <Tab label="Concept Selector"/>
-                        <Tab disabled={true} label="Inspect new Annotation"/>
+                        <Tab disabled={!annotation} label="Inspect new Annotation"/>
                     </Tabs>
                 </Box>
                 <TabPanel value={modeId} index={0}>
-                    <>
-                        <Typography variant='h5'>Write or select a full annotation</Typography>
-                        <Divider/>
-                        <Typography variant='h6'>Quick-Select one of the below annotations:</Typography>
-                        <Typography variant='subtitle1'>Adjust it, in case that it does not fit perfectly</Typography>
-                    </>
+                    <AnnoWriteController/>
                 </TabPanel>
                 <TabPanel value={modeId} index={1}>
-                    <>
-                        <Typography variant='h5'>Select suggested Concepts or build new ones</Typography>
-                        <Divider/>
-                        <Typography variant='h6'>Add suggested concepts to the list of concepts:</Typography>
-                        <Divider/>
-                        <Typography variant='h6'>Build a custom concept:</Typography>
-                        <Typography variant='subtitle1'>Select or create at least one adjective and at least one noun
-                            from the Panels below.
-                            The current work-in-progress concept is shown at the last list entry at the lower right
-                            panel.</Typography>
-                    </>
+                    <ConceptsController/>
                 </TabPanel>
                 <TabPanel value={modeId} index={2}>
                     <>

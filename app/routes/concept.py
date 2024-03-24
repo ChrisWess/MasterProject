@@ -8,7 +8,11 @@ from app.db.daos.concept_dao import ConceptDAO
 
 @application.route('/concept', methods=['GET'])
 def find_concepts():
-    return ConceptDAO().find_all(projection=request.args, generate_response=True)
+    args = request.args
+    concept_dao = ConceptDAO()
+    if 'limit' in args:
+        concept_dao.limit(int(args['limit']))
+    return concept_dao.find_all(projection=args, generate_response=True)
 
 
 @application.route('/concept/<concept_id>', methods=['GET'])
