@@ -14,7 +14,7 @@ class Concept(TimestampBaseModel):
     phrase_word_ids: list[PyObjectId] = Field(default_factory=list, alias="phraseWordIds")  # list of corpus word IDs
     phrase_idxs: list[int] = Field(default_factory=list, alias="phraseIdxs")
     phrase_words: list[str] = Field(default_factory=list, alias="phraseWords")
-    complex_noun: bool = Field(default=False, alias="isNounComplex")
+    noun_count: int = Field(default=1, alias="nounCount")
     # By setting the following as -1, we can denote that the phrase is not relevant to the model (not modelled)
     conv_filter_idx: Optional[NonNegativeInt] = Field(default=None, alias="convFilterIdx")
 
@@ -27,7 +27,7 @@ class Concept(TimestampBaseModel):
             "phraseIdxs": [0, 1],
             "phraseWords": ["orange", "fur"],  # adjectives come first
             "convFilterIdx": 0,  # index of the model's conv-filter for this concept
-            "isNounComplex": False,
+            "nounCount": 1,
             "createdAt": datetime.now()
         }
         _json_example['updatedAt'] = _json_example['createdAt']

@@ -144,6 +144,9 @@ def update_bbox_validated():
         abort(404, err_msg)
     bbox = args['bbox']
     assert len(bbox) == 4
+    prev_bbox = ObjectDAO().find_bbox_by_id(object_id)
+    delta_x = bbox[0] - prev_bbox['tlx']
+    delta_y = bbox[1] - prev_bbox['tly']
     vis_feats = VisualFeatureDAO().find_by_object(object_id, projection=('annotationId', 'bboxs'))
     if vis_feats is None:
         err_msg = "The Detected Object ID you provided could not be found!"
@@ -161,6 +164,7 @@ def update_bbox_validated():
                            f" Bounding Box before executing this function. Aborting the Update...")
                 application.logger.error(err_msg)
                 abort(400, err_msg)
+        VisualFeatureDAO().reposition_bboxs_of_object(object_id, delta_x, delta_y)
     return ObjectDAO().update_bbox(object_id, bbox, generate_response=True)
 
 

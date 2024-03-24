@@ -240,6 +240,7 @@ class AnnotationDAO(JoinableDAO):
         #  https://www.mongodb.com/basics/full-text-search
 
     def delete_all_by_annotator(self, user_id, generate_response=False, db_session=None):
+        # TODO: delete all visual features of all deleted annotations (must be done in every delete operation)
         return self.delete_nested_doc_by_match('createdBy', user_id, generate_response, db_session)
 
     # @transaction
@@ -286,9 +287,6 @@ class AnnotationDAO(JoinableDAO):
         self.add_query("_id", anno_id)
         self.add_update('text', new_text)
 
-    def remove_concept_from_annotation(self, anno_id, concept_idx, generate_response=False, db_session=None):
-        pass  # TODO: delete overridden concepts, if they are not referenced by any other annotation
-
     @staticmethod
     def _reconstruct_sentence_from_tokens(tokens, start, stop):
         concept_text, split = '', False
@@ -303,7 +301,6 @@ class AnnotationDAO(JoinableDAO):
 
     @staticmethod
     def _update_concept_mask(new_cid, concepts, mask, start, stop):
-        # TODO: use remove_concept_from_annotation()
         if concepts:
             last_overridden_idx = None
             curr_cidx = mask[start]  # concept idx at start

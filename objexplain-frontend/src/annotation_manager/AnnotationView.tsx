@@ -50,6 +50,145 @@ export const loadVisualFeatures = async (annoId: string) => {
     return await getRequest('visFeature/annotation', annoId)
 }
 
+
+export const buildAnnotation = (annotation: Annotation, conceptRanges: [number, number][], markedWords: number[],
+                                showConcepts: boolean, hoverToggle: boolean, handleConceptClick: any): [ReactJSXElement[], boolean[]] => {
+    let buffer: ReactJSXElement[] = new Array<ReactJSXElement>()
+    let tokens: string[] = annotation.tokens;
+    let flags: boolean[] = []
+    let currRange = 0;
+    let idxStart = -1;
+    let idxEnd = -1;
+    if (conceptRanges.length > currRange) {
+        idxStart = conceptRanges[currRange][0];
+        idxEnd = conceptRanges[currRange][1];
+    }
+    for (let i = 0; i < tokens.length; i++) {
+        let token: string = tokens[i];
+        let isPunct = token.match(/^[.,:!?;]$/);
+        let isHyphen = !isPunct && token === '-'
+        flags.push(!isHyphen && !isPunct)
+        // TODO: also remove the whitespace after a hyphen
+        if (!showConcepts || idxStart === -1 || idxStart > i) {
+            let currentId = 'w' + i;
+            if (isPunct) {
+                if (markedWords.length != 0 && i >= markedWords[0] && i < markedWords[1]) {
+                    buffer.push(<abbr key={currentId} id={currentId}><Highlighted text={token}/></abbr>);
+                } else {
+                    buffer.push(<abbr key={currentId} id={currentId}>{token}</abbr>);
+                }
+            } else {
+                if (markedWords.length != 0 && i >= markedWords[0] && i < markedWords[1]) {
+                    if (i == markedWords[0]) {
+                        buffer.push(<abbr id={'ws' + i} key={'wSpace' + i}>{' '}</abbr>)
+                        buffer.push(<abbr key={currentId} id={currentId} className="wregular"><Highlighted
+                            text={token}/></abbr>);
+                    } else {
+                        buffer.push(<abbr id={'ws' + i} key={'wSpace' + i}><Highlighted text={' '}/></abbr>)
+                        if (i == markedWords[1] - 1) {
+                            buffer.push(<abbr key={currentId} id={currentId} className="wregular"><Highlighted
+                                text={token}/></abbr>);
+                        } else {
+                            buffer.push(<abbr key={currentId} id={currentId} className="wregular"
+                                              style={{backgroundColor: "deepskyblue"}}>{token}</abbr>);
+                        }
+                    }
+                } else {
+                    buffer.push(<abbr id={'ws' + i} key={'wSpace' + i}>{' '}</abbr>)
+                    buffer.push(<abbr key={currentId} id={currentId} className="wregular">{token}</abbr>)
+                }
+            }
+        } else if (i === idxEnd) {
+            let id = 'w' + idxStart
+            let currentId = 'c' + currRange;
+            if (idxStart === idxEnd) {
+                buffer.push(<b key={currentId} id={currentId} onClick={handleConceptClick}>
+                    {" "}
+                    <abbr
+                        key={id + "-1"}
+                        id={id}
+                        className={"cr cr-" + currRange}>
+                        <a key={id + "-2"} id={id + '-open'} href="">[</a>
+                        <HoverBox
+                            word={tokens[idxStart]}
+                            conceptIdx={currRange}
+                            hovertoggle={hoverToggle}
+                            annotation={annotation}
+                            color={CONCEPT_COLORS[currRange % 10]}/>
+                        <a key={id + "-4"} id={id + '-close'} href="">]</a>
+                        <sub key={id + "-5"} id={id + '-nr'}>{currRange + 1}</sub>
+                    </abbr>
+                </b>)
+            } else {
+                let idEnd = "w" + idxEnd;
+                buffer.push(
+                    <b key={currentId} id={currentId} onClick={handleConceptClick}>
+                        {" "}
+                        <abbr key={id + "-1"} id={id} className={"cr cr-" + currRange}
+                              style={{
+                                  backgroundColor: CONCEPT_COLORS[currRange % 10],
+                                  cursor: 'pointer', paddingTop: '2px',
+                              }}>
+                            <a key={id + "-2"} id={id + '-open'} href="">[</a>
+                            <HoverBox
+                                word={tokens[idxStart]}
+                                conceptIdx={currRange}
+                                hovertoggle={hoverToggle}
+                                annotation={annotation}
+                                color={CONCEPT_COLORS[currRange % 10]}/>
+                        </abbr>
+                        {tokens.slice(idxStart + 1, idxEnd).map((elem, index) => {
+                            let tokenIdx = idxStart + index + 1
+                            return <abbr key={'w' + tokenIdx + "-1"}
+                                         id={'w' + tokenIdx}
+                                         className={"cr cr-" + currRange}
+                                         style={{
+                                             backgroundColor: CONCEPT_COLORS[currRange % 10],
+                                             cursor: 'pointer', paddingTop: '2px',
+                                         }}>
+                                {flags[tokenIdx] && " "}
+                                <HoverBox
+                                    word={elem}
+                                    conceptIdx={currRange}
+                                    hovertoggle={hoverToggle}
+                                    annotation={annotation}
+                                    color={CONCEPT_COLORS[currRange % 10]}/>
+                            </abbr>
+                        })}
+                        <abbr key={idEnd + "-1"} id={idEnd} className={"cr cr-" + currRange}
+                              style={{
+                                  backgroundColor: CONCEPT_COLORS[currRange % 10],
+                                  cursor: 'pointer', paddingTop: '2px',
+                              }}>
+                            {" "}
+                            <HoverBox
+                                word={tokens[idxEnd]}
+                                conceptIdx={currRange}
+                                hovertoggle={hoverToggle}
+                                annotation={annotation}
+                                color={CONCEPT_COLORS[currRange % 10]}/>
+                            <a key={idEnd + "-2"} id={idEnd + '-close'} href="">]</a>
+                            <sub key={idEnd + "-3"} id={idEnd + '-nr'}>{currRange + 1}</sub>
+                        </abbr>
+                    </b>)
+            }
+        } else {
+            continue;
+        }
+        if (showConcepts && i === idxEnd) {
+            ++currRange;
+            if (conceptRanges.length > currRange) {
+                idxStart = conceptRanges[currRange][0];
+                idxEnd = conceptRanges[currRange][1];
+            } else {
+                idxStart = -1;
+                idxEnd = -1;
+            }
+        }
+    }
+    return [buffer, flags]
+}
+
 const AnnotationView: FC = () => {
     const {projectName, docId, objIdx, annoIdx} = useParams();
     const context: any = useOutletContext();
@@ -218,143 +357,13 @@ const AnnotationView: FC = () => {
     }
 
     const highlightedAnnotation = useMemo(() => {
-        let buffer: ReactJSXElement[] = new Array<ReactJSXElement>()
         if (annotation && conceptRanges) {
-            let tokens: string[] = annotation.tokens;
-            let flags: boolean[] = []
-            let currRange = 0;
-            let idxStart = -1;
-            let idxEnd = -1;
-            if (conceptRanges.length > currRange) {
-                idxStart = conceptRanges[currRange][0];
-                idxEnd = conceptRanges[currRange][1];
-            }
-            for (let i = 0; i < tokens.length; i++) {
-                let token: string = tokens[i];
-                let isPunct = token.match(/^[.,:!?;]$/);
-                let isHyphen = !isPunct && token === '-'
-                flags.push(!isHyphen && !isPunct)
-                // TODO: also remove the whitespace after a hyphen
-                if (!showConcepts || idxStart === -1 || idxStart > i) {
-                    let currentId = 'w' + i;
-                    if (isPunct) {
-                        if (markedWords.length != 0 && i >= markedWords[0] && i < markedWords[1]) {
-                            buffer.push(<abbr key={currentId} id={currentId}><Highlighted text={token}/></abbr>);
-                        } else {
-                            buffer.push(<abbr key={currentId} id={currentId}>{token}</abbr>);
-                        }
-                    } else {
-                        if (markedWords.length != 0 && i >= markedWords[0] && i < markedWords[1]) {
-                            if (i == markedWords[0]) {
-                                buffer.push(<abbr id={'ws' + i} key={'wSpace' + i}>{' '}</abbr>)
-                                buffer.push(<abbr key={currentId} id={currentId} className="wregular"><Highlighted
-                                    text={token}/></abbr>);
-                            } else {
-                                buffer.push(<abbr id={'ws' + i} key={'wSpace' + i}><Highlighted text={' '}/></abbr>)
-                                if (i == markedWords[1] - 1) {
-                                    buffer.push(<abbr key={currentId} id={currentId} className="wregular"><Highlighted
-                                        text={token}/></abbr>);
-                                } else {
-                                    buffer.push(<abbr key={currentId} id={currentId} className="wregular"
-                                                      style={{backgroundColor: "deepskyblue"}}>{token}</abbr>);
-                                }
-                            }
-                        } else {
-                            buffer.push(<abbr id={'ws' + i} key={'wSpace' + i}>{' '}</abbr>)
-                            buffer.push(<abbr key={currentId} id={currentId} className="wregular">{token}</abbr>)
-                        }
-                    }
-                } else if (i === idxEnd) {
-                    let id = 'w' + idxStart
-                    let currentId = 'c' + currRange;
-                    if (idxStart === idxEnd) {
-                        buffer.push(<b key={currentId} id={currentId} onClick={setNewConceptSelection}>
-                            {" "}
-                            <abbr
-                                key={id + "-1"}
-                                id={id}
-                                className={"cr cr-" + currRange}>
-                                <a key={id + "-2"} id={id + '-open'} href="">[</a>
-                                <HoverBox
-                                    word={tokens[idxStart]}
-                                    conceptIdx={currRange}
-                                    hovertoggle={hoverToggle}
-                                    annotation={annotation}
-                                    color={CONCEPT_COLORS[currRange % 10]}/>
-                                <a key={id + "-4"} id={id + '-close'} href="">]</a>
-                                <sub key={id + "-5"} id={id + '-nr'}>{currRange + 1}</sub>
-                            </abbr>
-                        </b>)
-                    } else {
-                        let idEnd = "w" + idxEnd;
-                        buffer.push(
-                            <b key={currentId} id={currentId} onClick={setNewConceptSelection}>
-                                {" "}
-                                <abbr key={id + "-1"} id={id} className={"cr cr-" + currRange}
-                                      style={{
-                                          backgroundColor: CONCEPT_COLORS[currRange % 10],
-                                          cursor: 'pointer', paddingTop: '2px',
-                                      }}>
-                                    <a key={id + "-2"} id={id + '-open'} href="">[</a>
-                                    <HoverBox
-                                        word={tokens[idxStart]}
-                                        conceptIdx={currRange}
-                                        hovertoggle={hoverToggle}
-                                        annotation={annotation}
-                                        color={CONCEPT_COLORS[currRange % 10]}/>
-                                </abbr>
-                                {tokens.slice(idxStart + 1, idxEnd).map((elem, index) => {
-                                    let tokenIdx = idxStart + index + 1
-                                    return <abbr key={'w' + tokenIdx + "-1"}
-                                                 id={'w' + tokenIdx}
-                                                 className={"cr cr-" + currRange}
-                                                 style={{
-                                                     backgroundColor: CONCEPT_COLORS[currRange % 10],
-                                                     cursor: 'pointer', paddingTop: '2px',
-                                                 }}>
-                                        {flags[tokenIdx] && " "}
-                                        <HoverBox
-                                            word={elem}
-                                            conceptIdx={currRange}
-                                            hovertoggle={hoverToggle}
-                                            annotation={annotation}
-                                            color={CONCEPT_COLORS[currRange % 10]}/>
-                                    </abbr>
-                                })}
-                                <abbr key={idEnd + "-1"} id={idEnd} className={"cr cr-" + currRange}
-                                      style={{
-                                          backgroundColor: CONCEPT_COLORS[currRange % 10],
-                                          cursor: 'pointer', paddingTop: '2px',
-                                      }}>
-                                    {" "}
-                                    <HoverBox
-                                        word={tokens[idxEnd]}
-                                        conceptIdx={currRange}
-                                        hovertoggle={hoverToggle}
-                                        annotation={annotation}
-                                        color={CONCEPT_COLORS[currRange % 10]}/>
-                                    <a key={idEnd + "-2"} id={idEnd + '-close'} href="">]</a>
-                                    <sub key={idEnd + "-3"} id={idEnd + '-nr'}>{currRange + 1}</sub>
-                                </abbr>
-                            </b>)
-                    }
-                } else {
-                    continue;
-                }
-                if (showConcepts && i === idxEnd) {
-                    ++currRange;
-                    if (conceptRanges.length > currRange) {
-                        idxStart = conceptRanges[currRange][0];
-                        idxEnd = conceptRanges[currRange][1];
-                    } else {
-                        idxStart = -1;
-                        idxEnd = -1;
-                    }
-                }
-            }
-            dispatch(setWordFlags(flags));
+            let result = buildAnnotation(annotation, conceptRanges, markedWords,
+                showConcepts, hoverToggle, setNewConceptSelection)
+            dispatch(setWordFlags(result[1]));
+            return result[0]
         }
-        return buffer
+        return []
     }, [annotation, conceptRanges, markedWords, hoverToggle, showConcepts])
 
     useEffect(() => {

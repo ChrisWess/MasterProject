@@ -15,7 +15,7 @@ class ConceptPayload(TimestampPayload):
     phrase_idxs: Optional[list[int]] = Field(default=None, alias="phraseIdxs")
     phrase_word_data: Optional[list[WordPayload]] = Field(default=None, alias="phraseWordsData")
     phrase_words: Optional[list[str]] = Field(default=None, alias="phraseWords")
-    complex_noun: Optional[bool] = Field(default=None, alias="isNounComplex")
+    noun_count: Optional[bool] = Field(default=None, alias="nounCount")
     conv_filter_idx: Optional[int] = Field(default=None, alias="convFilterIdx")
 
     class Config:
@@ -28,7 +28,7 @@ class ConceptPayload(TimestampPayload):
             "phraseWordsData": [WordPayload(), WordPayload()],
             "phraseWords": ["orange", "fur"],
             "convFilterIdx": 0,
-            "isNounComplex": False,
+            "nounCount": 1,
             "createdAt": datetime.now()
         }
         _json_example['updatedAt'] = _json_example['createdAt']

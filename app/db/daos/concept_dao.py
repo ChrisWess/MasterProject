@@ -168,7 +168,6 @@ class ConceptDAO(JoinableDAO):
             if word['nounFlag']:
                 num_nouns += 1
                 root_id = word['_id']
-        is_complex = True if num_nouns > 1 else False
         concept_key = ','.join(str(idx) for idx in sorted(self._idxs))
         matching_concept = self.find_by_key(concept_key, db_session=db_session)
         if matching_concept is not None:
@@ -177,7 +176,7 @@ class ConceptDAO(JoinableDAO):
             self._idxs.clear()
             return False, matching_concept
         concept = Concept(concept_key=concept_key, root_noun=root_id, phrase_word_ids=self._word_ids,
-                          phrase_idxs=self._idxs, phrase_words=self._tokens, complex_noun=is_complex)
+                          phrase_idxs=self._idxs, phrase_words=self._tokens, noun_count=num_nouns)
         response = self.insert_doc(concept, generate_response=generate_response, db_session=db_session)
         self._tokens.clear()
         self._word_ids.clear()
@@ -203,10 +202,10 @@ class ConceptDAO(JoinableDAO):
         idx = 0
         for res, idxs, tokens, word_ids in zip(result_list, self._idxs, self._tokens, self._word_ids):
             if isinstance(res, tuple):
-                root_id, is_complex = res
+                root_id, ncount = res
                 self._helper_list[idx] = Concept(concept_key=self._helper_list[idx], root_noun=root_id,
                                                  phrase_word_ids=word_ids, phrase_idxs=idxs,
-                                                 phrase_words=tokens, complex_noun=is_complex)
+                                                 phrase_words=tokens, noun_count=ncount)
                 idx += 1
             elif not isinstance(res, int):
                 del self._helper_list[idx]
@@ -231,7 +230,7 @@ class ConceptDAO(JoinableDAO):
                 self._word_ids.append(word_ids)
                 self._idxs.append(idxs)
                 tokens, word_ids, idxs = [], [], []
-                result.append((root_id, True if num_nouns > 1 else False))
+                result.append((root_id, num_nouns))
                 num_nouns = 0
             new_id = word['_id']
             tokens.append(word['text'])
@@ -243,7 +242,7 @@ class ConceptDAO(JoinableDAO):
         self._tokens.append(tokens)
         self._word_ids.append(word_ids)
         self._idxs.append(idxs)
-        result.append((root_id, True if num_nouns > 1 else False))
+        result.append((root_id, num_nouns))
         dup_concept = self._collect_concepts(result, db_session)
         idx = 0
         for cdoc in self._helper_list:

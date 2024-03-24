@@ -81,7 +81,7 @@ class BaseDAO(AbstractDAO):
         "_push_each", "_pull_op", "_upd_ops_map", "_update_commands", "_helper_list", "_field_check",
         "_text_score_sorter", "_sort_list", "_projection_dict", "_match_agg_clause", "_group_by_agg", "_agg_group",
         "_grouping_flag", "_agg_sorter", "_agg_sort", "_agg_projection", "_agg_pipeline", "_index_definitions",
-        "_nested_get", "_array_filters"
+        "_nested_get", "_array_filters", "_increment_op"
     )
 
     GET = 0
@@ -141,12 +141,14 @@ class BaseDAO(AbstractDAO):
         self._unset_field_op = {}
         self._push_op = {}
         self._pull_op = {}
+        self._increment_op = {}
         self._push_each = {}
         self._upd_ops_map = {
             '$set': self._set_field_op,
             '$unset': self._unset_field_op,
             '$push': self._push_op,
             '$pull': self._pull_op,
+            '$inc': self._increment_op,
         }
         self._update_commands = {}
 
@@ -1134,7 +1136,9 @@ class BaseDAO(AbstractDAO):
                     projection.clear()
                 return None
             if not get_root:
-                result = self._nested_get(result)[0]
+                result = self._nested_get(result)
+                if type(result) is list:
+                    result = result[0]
                 self._helper_list.clear()
             if projection:
                 projection.clear()

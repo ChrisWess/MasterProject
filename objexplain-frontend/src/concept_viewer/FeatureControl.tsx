@@ -1,4 +1,4 @@
-import {FC, useEffect, useMemo} from "react";
+import {FC, useEffect, useMemo, useState} from "react";
 import Box from "@mui/material/Box";
 import {
     Button,
@@ -41,6 +41,8 @@ import {clearDoc, disableAnnoMode} from "../reducers/idocSlice";
 import {clearAnnotationView} from "../reducers/annotationSlice";
 import {postRequest, putRequest} from "../api/requests";
 import {Annotation} from "../api/models/annotation";
+import {fetchConcept} from "../annotation_manager/AnnotationControl";
+import {Concept} from "../api/models/concept";
 
 
 interface FeatureControlProps {
@@ -51,6 +53,8 @@ interface FeatureControlProps {
 const FeatureControlPanel: FC<FeatureControlProps> = ({resetRect, resetZoomCallback}) => {
     const navigate = useNavigate();
     const dispatch = useDispatch();
+    const [fullPhrase, setFullPhrase] = useState<string>();
+
     // global state (redux)
     const project: ProjectStats | undefined = useSelector((state: any) => state.mainPage.currProject);
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
@@ -59,6 +63,7 @@ const FeatureControlPanel: FC<FeatureControlProps> = ({resetRect, resetZoomCallb
     const annoIdx: number | undefined = useSelector((state: any) => state.annotation.annotationIdx);
     const conceptIdx: number | undefined = useSelector((state: any) => state.feature.conceptIdx);
     const feature: VisualFeature | undefined = useSelector((state: any) => state.feature.visualFeature);
+    const conceptInfo: Concept | undefined = useSelector((state: any) => state.annotation.conceptInfo);
     const currBbox: BoundingBoxCoords | undefined = useSelector((state: any) => state.feature.currBbox);
     const bboxs: BoundingBoxCoords[] = useSelector((state: any) => state.feature.bboxs);
     const bboxsVis: boolean[] = useSelector((state: any) => state.feature.bboxsVis);
@@ -194,6 +199,15 @@ const FeatureControlPanel: FC<FeatureControlProps> = ({resetRect, resetZoomCallb
         dispatch(initBboxVisibilities())
     }, [feature?.bboxs]);
 
+    useEffect(() => {
+        if (conceptInfo?.phraseWords) {
+            setFullPhrase(conceptInfo.phraseWords.join(' '))
+        } else if (conceptIdx !== undefined && annotation?.conceptIds) {
+            fetchConcept(annotation.conceptIds[conceptIdx], true).then(data =>
+                data && setFullPhrase(data.result.phraseWords.join(' ')))
+        }
+    }, [conceptIdx, annotation, conceptInfo]);
+
     return (
         <Box sx={{height: '100%', overflow: 'auto'}}>
             <Box sx={{display: 'flex', mb: 0.5}}>
@@ -208,6 +222,12 @@ const FeatureControlPanel: FC<FeatureControlProps> = ({resetRect, resetZoomCallb
                 {conceptIdx !== undefined && conceptSubstrings &&
                     <Typography sx={{color: CONCEPT_COLORS[conceptIdx]}}
                                 variant='h5'><b>"{conceptSubstrings[conceptIdx]}"</b></Typography>}
+            </Box>
+            <Box sx={{display: 'flex', mb: 1}}>
+                <Typography sx={{color: 'text.secondary'}}
+                            variant='h5'>Full Phrase:&nbsp;</Typography>
+                {conceptIdx !== undefined &&
+                    <Typography sx={{color: CONCEPT_COLORS[conceptIdx]}} variant='h5'><b>{fullPhrase}</b></Typography>}
             </Box>
             <FormGroup row sx={{ml: 1}}>
                 <FormControlLabel control={<Switch checked={showPrev}

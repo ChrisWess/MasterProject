@@ -24,6 +24,7 @@ import {
     clearAnnotationView,
     removeConceptAt,
     setAnnotation,
+    setConceptInfo,
     switchFeaturesVisible,
     switchFeatVisible,
     toggleConceptExpanded,
@@ -42,12 +43,24 @@ import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import DeleteIcon from "@mui/icons-material/Delete";
 import {clearObject} from "../reducers/objectSlice";
 import {clearDoc, disableAnnoMode} from "../reducers/idocSlice";
+import {Concept} from "../api/models/concept";
+
+
+export const fetchConcept = (conceptId: string, phraseOnly: boolean = false) => {
+    let payload = phraseOnly ? {phraseWords: 1} : {
+        key: 1,
+        phraseWords: 1,
+        updatedAt: 1,
+        createdAt: 1,
+        convFilterIdx: 1
+    }
+    return getRequest('concept', conceptId, payload)
+}
 
 
 const AnnotationControlPanel: FC = () => {
     const [alertContent, setAlertContent] = useState<string>();
     const [alertSeverity, setAlertSeverity] = useState<string>();
-    const [conceptInfo, setConceptInfo] = useState<any>();
 
     const navigate = useNavigate();
     const dispatch = useDispatch();
@@ -61,6 +74,7 @@ const AnnotationControlPanel: FC = () => {
     const markedWords: number[] = useSelector((state: any) => state.annotation.markedWords);
     const conceptSubstrings: string[] | undefined = useSelector((state: any) => state.annotation.conceptSubstrings);
     const features: (VisualFeature | string)[] = useSelector((state: any) => state.annotation.features);
+    const conceptInfo: Concept | undefined = useSelector((state: any) => state.annotation.conceptInfo);
     const featuresVis: boolean[] = useSelector((state: any) => state.annotation.featuresVis);
     const showFeats: boolean = useSelector((state: any) => state.annotation.showFeatures);
     const showConcepts: boolean = useSelector((state: any) => state.annotation.showConcepts);
@@ -219,14 +233,9 @@ const AnnotationControlPanel: FC = () => {
         return <></>
     }, [isConceptExpanded, conceptInfo])
 
-    const fetchConcept = (conceptId: string) => {
-        return getRequest('concept', conceptId,
-            {key: 1, phraseWords: 1, updatedAt: 1, createdAt: 1, convFilterIdx: 1})
-    }
-
     useEffect(() => {
         if (selectedConcept !== undefined && annotation?.conceptIds && isConceptExpanded) {
-            fetchConcept(annotation.conceptIds[selectedConcept]).then(data => data && setConceptInfo(data.result))
+            fetchConcept(annotation.conceptIds[selectedConcept]).then(data => data && dispatch(setConceptInfo(data.result)))
         }
     }, [selectedConcept, annotation, isConceptExpanded]);
 

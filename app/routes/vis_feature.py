@@ -95,7 +95,10 @@ def validate_visual_feature(annotation_id, concept_id, bboxs):
         application.logger.error(err_msg)
         abort(400, err_msg)
     try:
-        VisualFeatureDAO.validate_bboxs_fit_into_parent(bboxs, (obj['tlx'], obj['tly'], obj['brx'], obj['bry']))
+        parent_bb = (obj['tlx'], obj['tly'], obj['brx'], obj['bry'])
+        check_bbs = tuple((tlx + parent_bb[0], tly + parent_bb[1], brx + parent_bb[0], bry + parent_bb[1])
+                          for tlx, tly, brx, bry in bboxs)
+        VisualFeatureDAO.validate_bboxs_fit_into_parent(check_bbs, parent_bb)
     except ValueError as e:
         err_msg = str(e)
         application.logger.error(err_msg)

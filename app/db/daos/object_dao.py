@@ -244,7 +244,7 @@ class ObjectDAO(JoinableDAO):
         :param db_session:
         :return: List of object bounding boxes if found
         """
-        return self.find_by_id(obj_id, ('tlx', 'tly', 'brx', 'bry'), False, db_session)
+        return self.find_by_nested_id(obj_id, False, ('tlx', 'tly', 'brx', 'bry'), False, db_session)
 
     def find_bbox_by_annotation(self, anno_id, generate_response=False, db_session=None):
         """
@@ -273,6 +273,7 @@ class ObjectDAO(JoinableDAO):
         return result
 
     def delete_all_by_creator(self, user_id, generate_response=False, db_session=None):
+        # TODO: delete all visual features of all deleted nested annotations
         return self.delete_nested_doc_by_match('createdBy', user_id, generate_response, db_session)
 
     # @transaction

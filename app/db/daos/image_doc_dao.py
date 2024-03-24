@@ -12,7 +12,6 @@ from pymongo import ASCENDING, DESCENDING, TEXT
 from app import config, fs
 from app.db.daos.annotation_dao import AnnotationDAO
 from app.db.daos.base import JoinableDAO, dao_query, dao_update, BaseDAO
-from app.db.daos.label_dao import LabelDAO
 from app.db.daos.object_dao import ObjectDAO
 from app.db.daos.user_dao import UserDAO
 from app.db.daos.vis_feature_dao import VisualFeatureDAO
@@ -601,6 +600,7 @@ class ImgDocDAO(JoinableDAO):
 
     # @transaction
     def delete_by_id(self, entity_id, generate_response=False, db_session=None):
+        # TODO: delete all visual features of all deleted nested annotations, and delete work history
         self._query_matcher["_id"] = entity_id
         self._projection_dict['image'] = 1
         self._projection_dict['thumbnail'] = 1

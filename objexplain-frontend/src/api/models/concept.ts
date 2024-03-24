@@ -30,9 +30,9 @@ export type Concept = {
      */
     phraseWords: string[];
     /**
-     * Flag that shows, if the Concept's noun phrase contains multiple nouns
+     * Number that shows how many nouns are part of this concept's phrase (the trailing words)
      */
-    isNounComplex: boolean;
+    nounCount: number;
     /**
      * The index of the model's conv-filter, which is looking for this Concept
      */

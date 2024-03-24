@@ -1,6 +1,7 @@
 import {createSlice, PayloadAction} from "@reduxjs/toolkit";
 import {VisualFeature} from "../api/models/feature";
 import {Annotation} from "../api/models/annotation";
+import {Concept} from "../api/models/concept";
 
 interface AnnotationPageState {
     annotationIdx: number | undefined;
@@ -14,6 +15,7 @@ interface AnnotationPageState {
     showFeatures: boolean;
     featuresVis: boolean[];
     features: (VisualFeature | string)[];
+    conceptInfo: Concept | undefined;
     showConcepts: boolean;
     showHoverText: boolean;
     isConceptExpanded: boolean;
@@ -31,6 +33,7 @@ const initialState: AnnotationPageState = {
     showFeatures: true,
     featuresVis: [],
     features: [],
+    conceptInfo: undefined,
     showConcepts: true,
     showHoverText: true,
     isConceptExpanded: false,
@@ -184,6 +187,7 @@ export const annotationPageSlice = createSlice({
             state.showFeatures = true;
             state.featuresVis = [];
             state.features = [];
+            state.conceptInfo = undefined;
             state.showConcepts = true;
             state.showHoverText = true;
             state.isConceptExpanded = false;
@@ -210,6 +214,9 @@ export const annotationPageSlice = createSlice({
             }
             state.features = features
         },
+        setConceptInfo: (state, action: PayloadAction<Concept>) => {
+            state.conceptInfo = action.payload;
+        },
         toggleShowConcepts: (state) => {
             state.showConcepts = !state.showConcepts;
         },
@@ -226,7 +233,7 @@ export const annotationPageSlice = createSlice({
 export const {
     setAnnotationIdx, setAnnotation, setSelectedConcept, clearSelectedConcept,
     setWordFlags, setMarkedWords, setPrevColors, clearPrevColors,
-    switchFeaturesVisible, switchFeatVisible, setFeatures,
+    switchFeaturesVisible, switchFeatVisible, setConceptInfo, setFeatures,
     removeConceptAt, addConceptAt, extractConceptInfo,
     toggleShowConcepts, toggleHoverText, toggleConceptExpanded,
     clearAnnotationView,

@@ -129,3 +129,21 @@ class VisualFeatureDAO(JoinableDAO):
         result = self.array_push_many('bboxs', bboxs, ('_id', feat_id), False, db_session)
         del self._set_field_op['updatedAt']
         return self.to_response(result, BaseDAO.UPDATE) if generate_response else result
+
+    def reposition_bboxs_of_object(self, object_id, delta_x, delta_y, generate_response=False, db_session=None):
+        self._query_matcher['objectId'] = object_id
+        self._set_field_op['updatedAt'] = datetime.now()
+        self._update_commands['$set'] = self._set_field_op
+        sub_x = -delta_x
+        sub_y = -delta_y
+        self._increment_op['bboxs.$[].tlx'] = sub_x
+        self._increment_op['bboxs.$[].tly'] = sub_y
+        self._increment_op['bboxs.$[].brx'] = sub_x
+        self._increment_op['bboxs.$[].bry'] = sub_y
+        self._update_commands['$inc'] = self._increment_op
+        result = self.collection.update_many(self._query_matcher, self._update_commands, session=db_session)
+        del self._set_field_op['updatedAt']
+        self._increment_op.clear()
+        self._update_commands.clear()
+        self._query_matcher.clear()
+        return self.to_response(result, BaseDAO.UPDATE) if generate_response else result
