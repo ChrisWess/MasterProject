@@ -75,14 +75,77 @@ class CorpusDAO(BaseDAO):
 
     def find_by_index(self, word_idx, projection=None, generate_response=False, db_session=None):
         """
-        Find all CorpusWords that contain the given word index. I.e. retrieve all words with the same stem.
+        Find all CorpusWords that contain the given word index. I.e. retrieve all words with the same lemma.
         :param word_idx: integer word index to search for
         :param projection:
         :param generate_response:
         :param db_session:
-        :return: CorpusWords that have the given index (they have the same stem)
+        :return: CorpusWords that have the given index (they have the same lemma)
         """
         return self.simple_match("index", word_idx, projection, generate_response, db_session)
+
+    def find_by_indices(self, word_idxs, projection=None, generate_response=False, db_session=None):
+        """
+        Find all CorpusWords that contain the given word index. I.e. retrieve all words with the same lemma.
+        :param word_idxs: integer word indices to search for
+        :param projection:
+        :param generate_response:
+        :param db_session:
+        :return: CorpusWords that have the given index (they have the same lemma)
+        """
+        projection = self.build_projection(projection)
+        self._in_query['$in'] = word_idxs
+        self._query_matcher['index'] = self._in_query
+        result = self.collection.find(self._query_matcher, projection, session=db_session)
+        result = list(self._apply_sort_limit(result))
+        self._in_query.clear()
+        self._query_matcher.clear()
+        return self.to_response(result) if generate_response else result
+
+    def find_concept_words_from_indices(self, word_idxs, db_session=None):
+        """
+        Find all CorpusWords that...
+        :param word_idxs: integer word indices to search for
+        :param db_session:
+        :return: CorpusWords that are most likely to produce a realistic concept
+        """
+        self._in_query['$in'] = word_idxs
+        self._query_matcher['index'] = self._in_query
+        result = self._apply_sort_limit(self.collection.find(self._query_matcher, session=db_session))
+        adjs, nouns = self._field_check, self._push_op
+        # TODO: take all nouns that have no adjective version, otherwise always take the adjective version.
+        #   but buffer the first occurrence of a noun in case there are no words that have only noun versions
+        for word_data in result:
+            index = word_data['index']
+            prev_adj = adjs.get(index, None)
+            if word_data['nounFlag']:
+                prev_noun = nouns.get(index, None)
+                if not nouns:
+                    nouns[index] = word_data
+                elif len(nouns) > 1:
+                    if prev_noun:
+                        if len(prev_noun['text']) > len(word_data['text']):
+                            nouns[index] = word_data
+                        elif prev_adj:
+                            del nouns[index]
+                elif index in nouns and len(nouns[index]['text']) > len(word_data['text']):
+                    nouns[index] = word_data
+            elif not prev_adj or len(prev_adj['text']) > len(word_data['text']):
+                adjs[index] = word_data
+        self._in_query.clear()
+        self._query_matcher.clear()
+        if not nouns:
+            adjs.clear()
+            raise ValueError('No nouns found in the given word indices!')
+        elif not adjs:
+            nouns.clear()
+            raise ValueError('No adjectives found in the given word indices!')
+        root_id = None
+        for noun in nouns.values():
+            root_id = noun['_id']
+            if noun['index'] not in adjs:
+                break
+        return [*adjs.values(), *nouns.values()], len(nouns), root_id
 
     def find_all_nouns(self, projection=None, generate_response=False, db_session=None):
         """
@@ -112,11 +175,42 @@ class CorpusDAO(BaseDAO):
         :return: True, if index exists, else False
         """
         self._query_matcher['index'] = word_idx
-        self._projection_dict['_id'] = 1
-        result = self.collection.find_one(self._query_matcher, self._projection_dict, session=db_session)
+        result = self.collection.count_documents(self._query_matcher, limit=1, session=db_session)
         self._query_matcher.clear()
-        self._projection_dict.clear()
         return bool(result)
+
+    def indices_exist(self, word_idxs, check_unique=False, db_session=None):
+        """
+        Checks if a word with the given index exists in the database
+        :param word_idxs: integer word indices
+        :param check_unique: if False, then make sure values must be unique
+        :param db_session:
+        :return: True, if index exists, else False
+        """
+        if check_unique:
+            idxs_set = set(word_idxs)
+            word_idxs.clear()
+            word_idxs.extend(idxs_set)
+        target_count = len(word_idxs)
+        self._in_query['$in'] = word_idxs
+        self._query_matcher['index'] = self._in_query
+        self._match_agg_clause['$match'] = self._query_matcher
+        self._group_by_agg['_id'] = "$index"
+        self._increment_op['$count'] = "count"
+        self._agg_pipeline.append(self._match_agg_clause)
+        self._agg_pipeline.append(self._agg_group)
+        self._agg_pipeline.append(self._increment_op)
+        try:
+            result = next(self.collection.aggregate(self._agg_pipeline, session=db_session))
+            return result == target_count
+        except StopIteration:
+            return not target_count
+        finally:
+            self._query_matcher.clear()
+            self._in_query.clear()
+            self._match_agg_clause.clear()
+            self._group_by_agg.clear()
+            self._increment_op.clear()
 
     def _find_word_by_lemmas(self, word, lemma, is_noun, db_session=None):
         lemma_idx = -1

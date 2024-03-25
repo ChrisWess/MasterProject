@@ -4,8 +4,9 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import Typography from "@mui/material/Typography";
 import {useDispatch, useSelector} from "react-redux";
-import {clearConcepts, setConceptEditIdx} from "../reducers/annotationCreateSlice";
+import {clearConcepts, setConceptEditIdx, setNewAnnotation} from "../reducers/annotationCreateSlice";
 import PhraseChip from "./PhraseChip";
+import {postRequest} from "../api/requests";
 
 
 interface ConceptBuilderProps {
@@ -71,6 +72,11 @@ const ConceptBuilderView: FC<ConceptBuilderProps> = ({value, index, ...other}) =
         </List>)
     }, [concAdjectives, concNouns, adjectiveIdxs, nounIdxs, conceptIdx])
 
+    const submitAnnotation = () => {
+        // TODO
+        postRequest('annotation', {}).then(data => data && dispatch(setNewAnnotation(data.result)))
+    }
+
     return <div
         hidden={value !== index}
         id={'concept-builder'}
@@ -86,7 +92,7 @@ const ConceptBuilderView: FC<ConceptBuilderProps> = ({value, index, ...other}) =
                     <Button sx={{width: '50%'}} onClick={() => {
                         // TODO: submit annotation to backend, write result into newAnnotation state and
                         //   then switch state to AnnotationViewer (modeId = 2)
-                    }}>Submit Annotation</Button>
+                    }}>Build Annotation</Button>
                 </Box>
             </Box>
             <Box sx={{height: '230px', border: '3px solid', borderColor: '#203020'}}>

@@ -8,6 +8,7 @@ from pymongo import ASCENDING
 from app import application
 from app.db.daos.base import JoinableDAO, dao_update, dao_query, BaseDAO
 from app.db.daos.concept_dao import ConceptDAO
+from app.db.daos.corpus_dao import CorpusDAO
 from app.db.daos.label_dao import LabelDAO
 from app.db.daos.user_dao import UserDAO
 from app.db.models.annotation import Annotation
@@ -263,13 +264,42 @@ class AnnotationDAO(JoinableDAO):
         return self.insert_docs(annotations, (doc_id, obj_id),
                                 generate_response=generate_response, db_session=db_session)
 
-    # @transaction
-    def add_as_concepts(self, obj_id, concept_ids, concept_spans, generate_response=False, db_session=None):
-        # creates a new explanation annotation for the given object
-        if len(concept_ids) == len(concept_spans):
-            raise ValueError('The number of concepts does not match the concept starting indices!')
-        user_id = UserDAO().get_current_user_id()
-        concepts = ConceptDAO().find_many(concept_ids, projection=('_id', 'phraseWords'), db_session=db_session)
+    def from_concepts(self, concept_word_idx_lists, main_category, user_id, generate_response=False, db_session=None):
+        idx = 0
+        for cword_idxs in concept_word_idx_lists:
+            self._helper_list.extend(cword_idxs)
+            key = ','.join(str(idx) for idx in sorted(cword_idxs))
+            if key in self._field_check:
+                del concept_word_idx_lists[idx]
+            else:
+                self._field_check[key] = None
+                concept_word_idx_lists[idx] = key
+                idx += 1
+        idxs_exist = CorpusDAO().indices_exist(self._helper_list, db_session=db_session)
+        self._helper_list.clear()
+        if not idxs_exist:
+            self._field_check.clear()
+            raise ValueError('Not all provided word indices exist in the database!')
+        concepts = ConceptDAO().find_by_keys(concept_word_idx_lists, get_cursor=True, db_session=db_session)
+        self._helper_list.extend(('this', main_category, 'has'))
+        concept_ids = []
+        for i, con in enumerate(concepts):
+            del self._field_check[con['key']]
+            self._helper_list.extend(con['phraseWords'])
+            self._helper_list.append(',' if i < len(concept_word_idx_lists) - 1 else 'and')
+        if self._field_check:
+            for key in self._field_check:
+                concept_ids.append(key)
+            self._field_check.clear()  # TODO: add remaining keys (that were not found) to DB => make new concept POST method add_from_key()
+        self._helper_list[-1] = '.'
+        mask = None  # TODO: save which indices are stop words and create mask from it and construct text
+        annotation = ' '.join(self._helper_list)
+        anno = Annotation(text=annotation, tokens=self._helper_list, concept_mask=mask,
+                          concept_ids=concept_ids, created_by=user_id)
+        self._helper_list.clear()
+        return self.to_response(anno) if generate_response else anno
+
+    def process_annotation_text(self, obj_id, doc_id, anno_text, generate_response=False, db_session=None):
         tokens = []
         for con in concepts:
             tokens.extend(con['phraseWords'])
@@ -277,9 +307,15 @@ class AnnotationDAO(JoinableDAO):
         del tokens[-1]
         mask = self.create_token_mask(tokens, concept_spans)
         annotation = ' '.join(tokens)
-        anno = Annotation(obj_id=obj_id, text=annotation, tokens=tokens, concept_mask=mask,
+        anno = Annotation(text=annotation, tokens=tokens, concept_mask=mask,
                           concept_ids=concept_ids, created_by=user_id)
-        return self.insert_doc(anno, obj_id, generate_response=generate_response, db_session=db_session)
+        return self.insert_doc(anno, (doc_id, obj_id), generate_response=generate_response, db_session=db_session)
+
+    def push_annotation(self, obj_id, doc_id, anno_entity, generate_response=False, db_session=None):
+        # TODO: check that IDs exist (or not necessary with insert_doc?)
+        anno_entity = Annotation(**anno_entity).to_dict()
+        return self.insert_doc(anno_entity, (doc_id, obj_id),
+                               generate_response=generate_response, db_session=db_session)
 
     @dao_update(update_many=False)
     def update_text(self, anno_id, new_text):

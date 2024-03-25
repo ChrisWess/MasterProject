@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from pymongo import ASCENDING, DESCENDING
 
 from app.db.daos.base import JoinableDAO, dao_update
@@ -46,23 +48,30 @@ class ConceptDAO(JoinableDAO):
         """
         return self.simple_match("key", key, projection, generate_response, db_session, find_many=False)
 
-    def find_by_keys(self, keys, projection=None, generate_response=False, db_session=None):
+    def find_by_keys(self, keys, projection=None, generate_response=False, get_cursor=False, db_session=None):
         """
         Find all Concepts that are successfully identified from the given list of keys
         :param keys: list of Concept key identifiers to search for
         :param projection:
         :param generate_response:
+        :param get_cursor:
         :param db_session:
         :return: Concepts that matches the given keys
         """
         self._in_query['$in'] = keys
         self._query_matcher["key"] = self._in_query
-        if projection:
+        if get_cursor:
             projection = self.build_projection(projection)
-            result = self.collection.find(self._query_matcher, projection, session=db_session)
+            projection_copy = deepcopy(projection) if projection else projection
+            result = self.collection.find(deepcopy(self._query_matcher), projection_copy, session=db_session)
+            result = self._apply_sort_limit(result, True)
         else:
-            result = self.collection.find(self._query_matcher, session=db_session)
-        result = list(self._apply_sort_limit(result))
+            if projection:
+                projection = self.build_projection(projection)
+                result = self.collection.find(self._query_matcher, projection, session=db_session)
+            else:
+                result = self.collection.find(self._query_matcher, session=db_session)
+            result = list(self._apply_sort_limit(result))
         self._in_query.clear()
         self._query_matcher.clear()
         if projection:
@@ -151,6 +160,41 @@ class ConceptDAO(JoinableDAO):
     def update_filter(self, concept_id, filter_idx):
         self.add_query("_id", concept_id)
         self.add_update('convFilterIdx', filter_idx)
+
+    # @transaction
+    def add_from_key(self, concept_key, generate_response=False, db_session=None):
+        self._idxs.extend(concept_key.split(','))
+        for i, ixs in enumerate(self._idxs):
+            self._idxs[i] = int(ixs)
+        words, num_nouns, root_id = CorpusDAO().find_concept_words_from_indices(self._idxs, db_session=db_session)
+        for word in words:
+            self._tokens.append(word['text'])
+            self._word_ids.append(word['_id'])
+        concept = Concept(concept_key=concept_key, root_noun=root_id, phrase_word_ids=self._word_ids,
+                          phrase_idxs=self._idxs, phrase_words=self._tokens, noun_count=num_nouns)
+        response = self.insert_doc(concept, generate_response=generate_response, db_session=db_session)
+        self._tokens.clear()
+        self._word_ids.clear()
+        self._idxs.clear()
+        return response if generate_response else True, response[1]
+
+    # @transaction
+    def add_from_keys(self, concept_keys, generate_response=False, db_session=None):
+        # TODO
+        self._idxs.extend(concept_key.split(','))
+        for i, ixs in enumerate(self._idxs):
+            self._idxs[i] = int(ixs)
+        words, num_nouns, root_id = CorpusDAO().find_concept_words_from_indices(self._idxs, db_session=db_session)
+        for word in words:
+            self._tokens.append(word['text'])
+            self._word_ids.append(word['_id'])
+        concept = Concept(concept_key=concept_key, root_noun=root_id, phrase_word_ids=self._word_ids,
+                          phrase_idxs=self._idxs, phrase_words=self._tokens, noun_count=num_nouns)
+        response = self.insert_doc(concept, generate_response=generate_response, db_session=db_session)
+        self._tokens.clear()
+        self._word_ids.clear()
+        self._idxs.clear()
+        return response if generate_response else True, response[1]
 
     # @transaction
     def find_doc_or_add(self, noun_phrase, generate_response=False, db_session=None):

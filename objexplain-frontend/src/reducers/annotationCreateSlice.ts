@@ -232,6 +232,12 @@ export const newAnnotationPageSlice = createSlice({
         setSuggestedNouns: (state, action: PayloadAction<CorpusWord[]>) => {
             state.suggestedNouns = action.payload;
         },
+        setNewAnnotation: (state, action: PayloadAction<Annotation>) => {
+            state.newAnnotation = action.payload;
+        },
+        setConceptRanges: (state, action: PayloadAction<[number, number][]>) => {
+            state.conceptRanges = action.payload;
+        },
     }
 });
 
@@ -241,7 +247,8 @@ export const {
     clearSuggestedText, addNewConceptDraft, addAdjective, addNoun,
     setConceptEditIdx, addFullConcept, addFullConcepts, initAnnoSelectionFlags,
     markAnnoSelected, initConceptSelectionFlags, addSelectedConcept, selectConceptIdx,
-    setSuggestedConcepts, setSuggestedAdjectives, setSuggestedNouns,
+    setSuggestedConcepts, setSuggestedAdjectives, setSuggestedNouns, setNewAnnotation,
+    setConceptRanges,
 } = newAnnotationPageSlice.actions;
 
 export default newAnnotationPageSlice.reducer;
