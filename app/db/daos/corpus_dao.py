@@ -145,7 +145,7 @@ class CorpusDAO(BaseDAO):
             root_id = noun['_id']
             if noun['index'] not in adjs:
                 break
-        return [*adjs.values(), *nouns.values()], len(nouns), root_id
+        return (*adjs.values(), *nouns.values()), len(nouns), root_id
 
     def find_all_nouns(self, projection=None, generate_response=False, db_session=None):
         """

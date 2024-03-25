@@ -180,21 +180,21 @@ class ConceptDAO(JoinableDAO):
 
     # @transaction
     def add_from_keys(self, concept_keys, generate_response=False, db_session=None):
-        # TODO
-        self._idxs.extend(concept_key.split(','))
-        for i, ixs in enumerate(self._idxs):
-            self._idxs[i] = int(ixs)
-        words, num_nouns, root_id = CorpusDAO().find_concept_words_from_indices(self._idxs, db_session=db_session)
-        for word in words:
-            self._tokens.append(word['text'])
-            self._word_ids.append(word['_id'])
-        concept = Concept(concept_key=concept_key, root_noun=root_id, phrase_word_ids=self._word_ids,
-                          phrase_idxs=self._idxs, phrase_words=self._tokens, noun_count=num_nouns)
-        response = self.insert_doc(concept, generate_response=generate_response, db_session=db_session)
-        self._tokens.clear()
-        self._word_ids.clear()
-        self._idxs.clear()
-        return response if generate_response else True, response[1]
+        for i, key in enumerate(concept_keys):
+            self._idxs.extend(key.split(','))
+            for j, ixs in enumerate(self._idxs):
+                self._idxs[j] = int(ixs)
+            words, num_nouns, root_id = CorpusDAO().find_concept_words_from_indices(self._idxs, db_session=db_session)
+            for word in words:
+                self._tokens.append(word['text'])
+                self._word_ids.append(word['_id'])
+            concept = Concept(concept_key=key, root_noun=root_id, phrase_word_ids=self._word_ids.copy(),
+                              phrase_idxs=self._idxs.copy(), phrase_words=self._tokens.copy(), noun_count=num_nouns)
+            concept_keys[i] = concept
+            self._tokens.clear()
+            self._word_ids.clear()
+            self._idxs.clear()
+        return self.insert_docs(concept_keys, generate_response=generate_response, db_session=db_session)
 
     # @transaction
     def find_doc_or_add(self, noun_phrase, generate_response=False, db_session=None):

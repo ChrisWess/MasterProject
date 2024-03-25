@@ -236,9 +236,9 @@ class AnnotationDAO(JoinableDAO):
         self.unwind_nested_docs()
         self.add_agg_match('text', {"$regex": search_str})
         # self.add_text_search(search_str)
-        # TODO: the above apparently only works on a hosted server? Try to make use of the TEXT index by
-        #  implementing a text search query with $text but some things to consider:
-        #  https://www.mongodb.com/basics/full-text-search
+        # TODO: text search does not work with aggregations, only with find query. However, without unwinding the
+        #  documents first, we will retrieve the full image document, if only one annotation matches...
+        #  How to solve this?
 
     def delete_all_by_annotator(self, user_id, generate_response=False, db_session=None):
         # TODO: delete all visual features of all deleted annotations (must be done in every delete operation)
@@ -265,6 +265,7 @@ class AnnotationDAO(JoinableDAO):
                                 generate_response=generate_response, db_session=db_session)
 
     def from_concepts(self, concept_word_idx_lists, main_category, user_id, generate_response=False, db_session=None):
+        # concept_word_idx_lists list is reused as datastructure in this method
         idx = 0
         for cword_idxs in concept_word_idx_lists:
             self._helper_list.extend(cword_idxs)
@@ -280,40 +281,67 @@ class AnnotationDAO(JoinableDAO):
         if not idxs_exist:
             self._field_check.clear()
             raise ValueError('Not all provided word indices exist in the database!')
-        concepts = ConceptDAO().find_by_keys(concept_word_idx_lists, get_cursor=True, db_session=db_session)
+        concept_dao = ConceptDAO()
+        concepts = concept_dao.find_by_keys(concept_word_idx_lists, get_cursor=True, db_session=db_session)
         self._helper_list.extend(('this', main_category, 'has'))
-        concept_ids = []
-        for i, con in enumerate(concepts):
+        cidx = 0
+        wspace = ' '
+        annotation = f'this {main_category} has'
+        mask, concept_ids = [], []
+        for con in concepts:
             del self._field_check[con['key']]
-            self._helper_list.extend(con['phraseWords'])
-            self._helper_list.append(',' if i < len(concept_word_idx_lists) - 1 else 'and')
+            concept_ids.append(con['_id'])
+            phrase = con['phraseWords']
+            self._helper_list.extend(phrase)
+            annotation += wspace + wspace.join(phrase)
+            if self._field_check:
+                enum_tok = ','
+                annotation += enum_tok
+            else:
+                enum_tok = 'and'
+                annotation += wspace + enum_tok
+            self._helper_list.append(enum_tok)
+            mask.extend((cidx,) * len(phrase))
+            mask.append(-1)
+            cidx += 1
         if self._field_check:
+            concept_word_idx_lists.clear()
             for key in self._field_check:
-                concept_ids.append(key)
-            self._field_check.clear()  # TODO: add remaining keys (that were not found) to DB => make new concept POST method add_from_key()
+                concept_word_idx_lists.append(key)
+            concepts = concept_dao.add_from_keys(concept_word_idx_lists, db_session=db_session)
+            for i, con in enumerate(concepts):
+                concept_ids.append(con['_id'])
+                phrase = con['phraseWords']
+                self._helper_list.extend(phrase)
+                annotation += wspace + wspace.join(phrase)
+                if i < len(concepts) - 1:
+                    enum_tok = ','
+                    annotation += enum_tok
+                else:
+                    enum_tok = 'and'
+                    annotation += wspace + enum_tok
+                self._helper_list.append(enum_tok)
+                mask.extend((cidx,) * len(phrase))
+                mask.append(-1)
+                cidx += 1
+            self._field_check.clear()
         self._helper_list[-1] = '.'
-        mask = None  # TODO: save which indices are stop words and create mask from it and construct text
-        annotation = ' '.join(self._helper_list)
-        anno = Annotation(text=annotation, tokens=self._helper_list, concept_mask=mask,
+        annotation += '.'
+        anno = Annotation(text=annotation, tokens=self._helper_list.copy(), concept_mask=mask,
                           concept_ids=concept_ids, created_by=user_id)
         self._helper_list.clear()
         return self.to_response(anno) if generate_response else anno
 
-    def process_annotation_text(self, obj_id, doc_id, anno_text, generate_response=False, db_session=None):
-        tokens = []
-        for con in concepts:
-            tokens.extend(con['phraseWords'])
-            tokens.append('and')
-        del tokens[-1]
-        mask = self.create_token_mask(tokens, concept_spans)
-        annotation = ' '.join(tokens)
-        anno = Annotation(text=annotation, tokens=tokens, concept_mask=mask,
-                          concept_ids=concept_ids, created_by=user_id)
-        return self.insert_doc(anno, (doc_id, obj_id), generate_response=generate_response, db_session=db_session)
+    def process_annotation_text(self, anno_text, label_id, generate_response=False, db_session=None):
+        anno = self.prepare_annotation(anno_text, label_id, db_session=db_session)
+        return self.to_response(anno) if generate_response else anno
 
-    def push_annotation(self, obj_id, doc_id, anno_entity, generate_response=False, db_session=None):
-        # TODO: check that IDs exist (or not necessary with insert_doc?)
+    def push_annotation(self, obj_id, doc_id, anno_entity, proj_id=None, generate_response=False, db_session=None):
+        user_id = UserDAO().get_current_user_id()
+        from app.db.daos.work_history_dao import WorkHistoryDAO
+        WorkHistoryDAO().update_or_add(doc_id, user_id, proj_id, db_session=db_session)
         anno_entity = Annotation(**anno_entity).to_dict()
+        # if obj_id does not exist, no document will be pushed
         return self.insert_doc(anno_entity, (doc_id, obj_id),
                                generate_response=generate_response, db_session=db_session)
 
