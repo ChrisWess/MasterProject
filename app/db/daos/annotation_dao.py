@@ -37,18 +37,17 @@ class AnnotationDAO(JoinableDAO):
         self.preproc = DefaultAnnotationPreprocesser()
 
     def match_concepts(self, annotation, categories, db_session):
-        concept_ids = []
+        concepts = []
         concept_spans = []
         for nouph in self.preproc.extract_noun_phrases(annotation, categories):
-            concept_ids.append(nouph)
+            concepts.append(nouph)
             concept_spans.append((nouph.start, nouph.end))
-        if concept_ids:
-            if len(concept_ids) == 1:
-                concept_ids[0] = ConceptDAO().find_doc_or_add(concept_ids[0], db_session=db_session)[1]['_id']
+        if concepts:
+            if len(concepts) == 1:
+                concepts[0] = ConceptDAO().find_doc_or_add(concepts[0], db_session=db_session)[1]
             else:
-                for i, concept in enumerate(ConceptDAO().find_concepts_or_add(concept_ids, db_session=db_session)):
-                    concept_ids[i] = concept['_id']
-        return self.preproc.curr_tokens.copy(), concept_ids, concept_spans
+                concepts = ConceptDAO().find_concepts_or_add(concepts, db_session=db_session)
+        return self.preproc.curr_tokens.copy(), concepts, concept_spans
 
     @staticmethod
     def create_token_mask(anno_tokens, spans):
@@ -61,17 +60,26 @@ class AnnotationDAO(JoinableDAO):
                 token_mask[start:end] = (i for _ in range(start, end))
         return token_mask
 
-    def prepare_annotation(self, annotation, label_id, user_id=None, db_session=None):
+    def prepare_annotation(self, annotation, label_id, user_id=None, with_concepts=False, db_session=None):
         if not user_id:
             user_id = UserDAO().get_current_user_id()
         categories = LabelDAO().find_categories_by_label(label_id, db_session=db_session)
         category_set = set()
         for category in categories:
             category_set.update(category['tokens'])
-        tokens, concept_ids, concept_spans = self.match_concepts(annotation, category_set, db_session)
+        tokens, concepts, concept_spans = self.match_concepts(annotation, category_set, db_session)
         mask = self.create_token_mask(tokens, concept_spans)
-        return Annotation(id=ObjectId(), text=annotation, tokens=tokens, concept_mask=mask,
-                          concept_ids=concept_ids, created_by=user_id)
+        if with_concepts:
+            concept_ids = [concept['_id'] for concept in concepts]
+            annotation = Annotation(id=ObjectId(), text=annotation, tokens=tokens, concept_mask=mask,
+                                    concept_ids=concept_ids, created_by=user_id).to_dict()
+            annotation['concepts'] = concepts
+            return AnnotationPayload(**annotation)
+        else:
+            for i, concept in enumerate(concepts):
+                concepts[i] = concept['_id']
+            return Annotation(id=ObjectId(), text=annotation, tokens=tokens, concept_mask=mask,
+                              concept_ids=concepts, created_by=user_id)
 
     def _next_line(self, nouph, concept_ids, concept_spans):
         curr_concepts = concept_ids[-1]
@@ -163,7 +171,7 @@ class AnnotationDAO(JoinableDAO):
             if len(annotations) == 1:
                 annotation = annotations[0]
                 try:
-                    annotations[0] = self.prepare_annotation(annotation, label_id, user_id, db_session)
+                    annotations[0] = self.prepare_annotation(annotation, label_id, user_id, db_session=db_session)
                 except ValidationError as e:
                     if skip_val_errors:
                         application.logger.error(
@@ -250,7 +258,7 @@ class AnnotationDAO(JoinableDAO):
         #  into an "archived" collection, if the image document reaches the limit of 16MB => however unlikely to be
         #  reached, since images are saved separately with gridfs
         user_id = UserDAO().get_current_user_id()
-        anno = self.prepare_annotation(annotation, label_id, user_id, db_session)
+        anno = self.prepare_annotation(annotation, label_id, user_id, db_session=db_session)
         from app.db.daos.work_history_dao import WorkHistoryDAO
         WorkHistoryDAO().update_or_add(doc_id, user_id, proj_id, db_session=db_session)
         return self.insert_doc(anno, (doc_id, obj_id), generate_response=generate_response, db_session=db_session)
@@ -264,6 +272,10 @@ class AnnotationDAO(JoinableDAO):
         return self.insert_docs(annotations, (doc_id, obj_id),
                                 generate_response=generate_response, db_session=db_session)
 
+    def process_annotation_text(self, anno_text, label_id, generate_response=False, db_session=None):
+        anno = self.prepare_annotation(anno_text, label_id, with_concepts=True, db_session=db_session)
+        return self.to_response(anno) if generate_response else anno
+
     def from_concepts(self, concept_word_idx_lists, main_category, user_id, generate_response=False, db_session=None):
         # concept_word_idx_lists list is reused as datastructure in this method
         idx = 0
@@ -276,73 +288,87 @@ class AnnotationDAO(JoinableDAO):
                 self._field_check[key] = None
                 concept_word_idx_lists[idx] = key
                 idx += 1
-        idxs_exist = CorpusDAO().indices_exist(self._helper_list, db_session=db_session)
+        idxs_exist = CorpusDAO().indices_exist(self._helper_list, True, db_session=db_session)
         self._helper_list.clear()
         if not idxs_exist:
             self._field_check.clear()
             raise ValueError('Not all provided word indices exist in the database!')
         concept_dao = ConceptDAO()
-        concepts = concept_dao.find_by_keys(concept_word_idx_lists, get_cursor=True, db_session=db_session)
-        self._helper_list.extend(('this', main_category, 'has'))
+        concepts = concept_dao.find_by_keys(concept_word_idx_lists, db_session=db_session)
         cidx = 0
         wspace = ' '
+        # TODO: if any concepts contain the noun subject, then take collect all adjectives belonging to these concepts
+        #  and start the annotation with "this <comma-seperated, collected adjectives> <main_category> has...".
+        #  The mask and concept_ids must also be adjusted accordingly (maybe save a stat that contains the idx
+        #  of the subject-word).
+        # TODO: the annotation would also be a little more readable, if we identify if the root noun of a concept
+        #  is singular. If it is singular, then prefix the concept with the word "a" (e.g. a long beak).
+        self._helper_list.extend(('this', main_category, 'has'))
         annotation = f'this {main_category} has'
-        mask, concept_ids = [], []
+        mask, concept_ids = [-1] * 3, []
         for con in concepts:
             del self._field_check[con['key']]
             concept_ids.append(con['_id'])
             phrase = con['phraseWords']
             self._helper_list.extend(phrase)
             annotation += wspace + wspace.join(phrase)
-            if self._field_check:
+            mask.extend((cidx,) * len(phrase))
+            if len(self._field_check) >= 2:
                 enum_tok = ','
                 annotation += enum_tok
-            else:
+                self._helper_list.append(enum_tok)
+                mask.append(-1)
+            elif len(self._field_check) == 1:
                 enum_tok = 'and'
                 annotation += wspace + enum_tok
-            self._helper_list.append(enum_tok)
-            mask.extend((cidx,) * len(phrase))
-            mask.append(-1)
+                self._helper_list.append(enum_tok)
+                mask.append(-1)
             cidx += 1
         if self._field_check:
             concept_word_idx_lists.clear()
             for key in self._field_check:
                 concept_word_idx_lists.append(key)
-            concepts = concept_dao.add_from_keys(concept_word_idx_lists, db_session=db_session)
-            for i, con in enumerate(concepts):
+            concept_word_idx_lists = concept_dao.add_from_keys(concept_word_idx_lists, db_session=db_session)
+            last_split_pos = len(concept_word_idx_lists) - 2
+            for i, con in enumerate(concept_word_idx_lists):
                 concept_ids.append(con['_id'])
                 phrase = con['phraseWords']
                 self._helper_list.extend(phrase)
                 annotation += wspace + wspace.join(phrase)
-                if i < len(concepts) - 1:
+                mask.extend((cidx,) * len(phrase))
+                if i < last_split_pos:
                     enum_tok = ','
                     annotation += enum_tok
-                else:
+                    self._helper_list.append(enum_tok)
+                    mask.append(-1)
+                elif i == last_split_pos:
                     enum_tok = 'and'
                     annotation += wspace + enum_tok
-                self._helper_list.append(enum_tok)
-                mask.extend((cidx,) * len(phrase))
-                mask.append(-1)
+                    self._helper_list.append(enum_tok)
+                    mask.append(-1)
+                concepts.append(con)
                 cidx += 1
             self._field_check.clear()
-        self._helper_list[-1] = '.'
+        self._helper_list.append('.')
         annotation += '.'
-        anno = Annotation(text=annotation, tokens=self._helper_list.copy(), concept_mask=mask,
-                          concept_ids=concept_ids, created_by=user_id)
+        mask.append(-1)
+        anno = Annotation(text=annotation, tokens=self._helper_list.copy(),
+                          concept_mask=mask, concept_ids=concept_ids, created_by=user_id).to_dict()
+        anno['concepts'] = concepts
         self._helper_list.clear()
         return self.to_response(anno) if generate_response else anno
 
-    def process_annotation_text(self, anno_text, label_id, generate_response=False, db_session=None):
-        anno = self.prepare_annotation(anno_text, label_id, db_session=db_session)
-        return self.to_response(anno) if generate_response else anno
-
     def push_annotation(self, obj_id, doc_id, anno_entity, proj_id=None, generate_response=False, db_session=None):
+        # This trusts the client, who calls this method, that the data in the annotation entity is consistent for
+        # performance reasons. The anno_entity should result directly from process_annotation_text() or from_concepts()
         user_id = UserDAO().get_current_user_id()
+        assert str(user_id) == anno_entity['createdBy']
         from app.db.daos.work_history_dao import WorkHistoryDAO
         WorkHistoryDAO().update_or_add(doc_id, user_id, proj_id, db_session=db_session)
-        anno_entity = Annotation(**anno_entity).to_dict()
+        anno_entity['createdBy'] = user_id
+        anno_entity.pop('_id', None)
         # if obj_id does not exist, no document will be pushed
-        return self.insert_doc(anno_entity, (doc_id, obj_id),
+        return self.insert_doc(Annotation(id=ObjectId(), **anno_entity), (doc_id, obj_id),
                                generate_response=generate_response, db_session=db_session)
 
     @dao_update(update_many=False)

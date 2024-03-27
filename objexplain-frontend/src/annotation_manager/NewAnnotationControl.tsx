@@ -1,4 +1,4 @@
-import {FC, SyntheticEvent, useEffect, useState} from "react";
+import {FC, SyntheticEvent} from "react";
 import Box from "@mui/material/Box";
 import {Divider, IconButton, Tab, Tabs} from "@mui/material";
 import ArrowLeftIcon from '@mui/icons-material/ArrowLeft';
@@ -6,7 +6,6 @@ import ArrowDropUpIcon from '@mui/icons-material/ArrowDropUp';
 import {useDispatch, useSelector} from "react-redux";
 import {ProjectStats} from "../api/models/project";
 import Typography from "@mui/material/Typography";
-import AlertMessage from "../components/AlertMessage";
 import {useNavigate} from "react-router-dom";
 import {ImageDocument} from "../api/models/imgdoc";
 import {DetectedObject} from "../api/models/object";
@@ -17,12 +16,10 @@ import TabPanel from "../components/TabPanel";
 import {Annotation} from "../api/models/annotation";
 import ConceptsController from "./ConceptsController";
 import AnnoWriteController from "./AnnoWriteController";
+import AnnoInspectController from "./AnnoInspectController";
 
 
 const NewAnnotationControlPanel: FC = () => {
-    const [alertContent, setAlertContent] = useState<string>();
-    const [alertSeverity, setAlertSeverity] = useState<string>();
-
     const navigate = useNavigate();
     const dispatch = useDispatch();
     // global state (redux)
@@ -54,14 +51,8 @@ const NewAnnotationControlPanel: FC = () => {
         dispatch(setMode(newValue));
     };
 
-    useEffect(() => {
-
-    }, []);
-
     let newAnnoIdx = detObj?.annotations ? detObj.annotations.length : -1
 
-    // TODO: allow saving how often an annotation has been selected in "Text Writer".
-    //  Present annotations that are selected often for a type of object more often to users.
     return (
         <Box sx={{height: '100%', overflow: 'auto'}}>
             <Box sx={{display: 'flex', mb: 0.5}}>
@@ -88,17 +79,9 @@ const NewAnnotationControlPanel: FC = () => {
                     <ConceptsController/>
                 </TabPanel>
                 <TabPanel value={modeId} index={2}>
-                    <>
-                        <Typography variant='h5'>Inspect and verify/finalize your new annotation</Typography>
-                        <Typography variant='subtitle1'>Show list of concepts here and show the highlighted annotation
-                            in the lower right panel. You may also switch back to the other tabs to adjust and resubmit
-                            the annotation.
-                        </Typography>
-                    </>
+                    <AnnoInspectController/>
                 </TabPanel>
             </Box>
-            <AlertMessage content={alertContent} setContent={setAlertContent} severity={alertSeverity}
-                          displayTime={6000}/>
         </Box>
     )
 }

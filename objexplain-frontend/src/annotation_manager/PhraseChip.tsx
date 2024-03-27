@@ -14,7 +14,6 @@ interface PhraseChipProps {
 
 const PhraseChip: FC<PhraseChipProps> = ({token, phraseIdx, isNoun, handleClick, handleDelete}) => {
     token = isNoun ? token.charAt(0).toUpperCase() + token.substring(1).toLowerCase() : token.toLowerCase()
-    // TODO: nouns clickable to select root noun?
     return <Tooltip title={'phrase word ' + phraseIdx}>
         <Chip label={token} variant="outlined" color={isNoun ? 'primary' : 'success'}
               onClick={handleClick} onDelete={handleDelete} sx={{m: '2px'}}/>

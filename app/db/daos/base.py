@@ -369,7 +369,7 @@ class BaseDAO(AbstractDAO):
 
     def validate_doc(self, item, check_complete=True, to_json_string=False, force=False):
         # force=True ensures that each item is validated exactly once here
-        if not isinstance(item, self.payload_model) or force:
+        if not isinstance(item, (self.model, self.payload_model)) or force:
             item = self.payload_model(**item)
         item = item.to_json() if to_json_string else item.to_dict()
         if check_complete:
@@ -393,7 +393,7 @@ class BaseDAO(AbstractDAO):
         if operation == BaseDAO.GET:
             if is_list:
                 return self.list_response(result, validate)
-            elif not isinstance(result, dict):
+            elif not isinstance(result, (dict, self.model, self.payload_model)):
                 result = list(result)
             if validate:
                 result, is_complete = self.validate_doc(result)
@@ -590,7 +590,7 @@ class BaseDAO(AbstractDAO):
             self._apply_search_flag = False
         self._negation.clear()
         self._query_matcher.clear()
-        self.clear_query_augmentation.clear()
+        self.clear_query_augmentation()
 
     def limit(self, num_docs):
         self._limit_results = num_docs
@@ -813,6 +813,12 @@ class BaseDAO(AbstractDAO):
 
     def _do_aggregate(self):
         return self._grouping_flag or self._agg_pipeline
+
+    def does_value_exist(self, field_name, value, db_session=None):
+        self._query_matcher[field_name] = value
+        result = self.collection.count_documents(self._query_matcher, limit=1, session=db_session)
+        self._query_matcher.clear()
+        return bool(result)
 
     def _execute_aggregation(self, query, projection, get_cursor, db_session):
         if query:

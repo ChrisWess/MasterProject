@@ -174,10 +174,7 @@ class CorpusDAO(BaseDAO):
         :param db_session:
         :return: True, if index exists, else False
         """
-        self._query_matcher['index'] = word_idx
-        result = self.collection.count_documents(self._query_matcher, limit=1, session=db_session)
-        self._query_matcher.clear()
-        return bool(result)
+        return self.does_value_exist('index', word_idx, db_session)
 
     def indices_exist(self, word_idxs, check_unique=False, db_session=None):
         """
@@ -202,7 +199,7 @@ class CorpusDAO(BaseDAO):
         self._agg_pipeline.append(self._increment_op)
         try:
             result = next(self.collection.aggregate(self._agg_pipeline, session=db_session))
-            return result == target_count
+            return result['count'] == target_count
         except StopIteration:
             return not target_count
         finally:
@@ -211,6 +208,7 @@ class CorpusDAO(BaseDAO):
             self._match_agg_clause.clear()
             self._group_by_agg.clear()
             self._increment_op.clear()
+            self._agg_pipeline.clear()
 
     def _find_word_by_lemmas(self, word, lemma, is_noun, db_session=None):
         lemma_idx = -1

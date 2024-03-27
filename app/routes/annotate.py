@@ -7,6 +7,7 @@ from flask import request, abort
 from app import application
 from app.db.daos.annotation_dao import AnnotationDAO
 from app.db.daos.image_doc_dao import ImgDocDAO
+from app.db.daos.user_dao import UserDAO
 
 
 @application.route('/annotation', methods=['GET'])
@@ -63,6 +64,35 @@ def find_annotations_by_image(doc_id):
         err_msg = "The Annotation ID you provided is not a valid ID!"
         application.logger.error(err_msg)
         abort(404, err_msg)
+
+
+@application.route('/annotation/preprocess', methods=['GET'])
+def get_preprocessed_annotation():
+    args = request.args
+    if 'annotation' not in args or "labelId" not in args:
+        err_msg = 'Your query params must contain the key-value pairs with keys "annotation" and "labelId"!'
+        application.logger.error(err_msg)
+        abort(400, err_msg)
+    try:
+        return AnnotationDAO().process_annotation_text(args['annotation'], ObjectId(args['labelId']),
+                                                       generate_response=True)
+    except InvalidId:
+        err_msg = "The Label ID you provided is not a valid ID!"
+        application.logger.error(err_msg)
+        abort(404, err_msg)
+
+
+@application.route('/annotation/fromIdxs', methods=['GET'])
+def get_annotation_from_corpus_idxs():
+    args = request.args
+    if 'corpusIdxs' not in args or "category" not in args:
+        err_msg = 'Your query params must contain the key-value pairs with keys "corpusIdxs" and "category"!'
+        application.logger.error(err_msg)
+        abort(400, err_msg)
+    user_id = UserDAO().get_current_user_id()
+    word_idxs = loads(args['corpusIdxs'])
+    assert all(type(idxs) is list for idxs in word_idxs)
+    return AnnotationDAO().from_concepts(word_idxs, args['category'], user_id, generate_response=True)
 
 
 @application.route('/annotation/annotator/<annotator_id>', methods=['DELETE'])
@@ -123,6 +153,36 @@ def annotate():
             response = AnnotationDAO().add_many(obj_id, annotations, obj['_id'], obj['objects'][0]['labelId'],
                                                 obj['projectId'], generate_response=True)
             application.logger.info(f"Added {response['numResults']} new annotations to object {object_id} !")
+        return response
+    except InvalidId:
+        err_msg = "The Detected Object ID you provided is not a valid ID!"
+        application.logger.error(err_msg)
+        abort(404, err_msg)
+
+
+@application.route('/annotation/full', methods=['POST'])
+def push_new_annotation_entity():
+    args = request.json
+    if 'annotation' not in args or "objectId" not in args:
+        err_msg = ('Your request body must contain the key-value pairs with keys '
+                   '"annotation" or "annotations" and "objectId"!')
+        application.logger.error(err_msg)
+        abort(400, err_msg)
+    try:
+        object_id = args["objectId"]
+        obj_id = ObjectId(object_id)
+        obj = ImgDocDAO().find_by_object(obj_id, projection='projectId')
+        if obj is None:
+            err_msg = "No Detected Object with the given ID could be found!"
+            application.logger.error(err_msg)
+            abort(404, err_msg)
+        annotation = args['annotation']
+        cids = annotation['conceptIds']
+        for i, cid in enumerate(cids):
+            cids[i] = ObjectId(cid)
+        response = AnnotationDAO().push_annotation(obj_id, obj['_id'], annotation,
+                                                   obj['projectId'], generate_response=True)
+        application.logger.info(f"Added new annotation {response['result']} to object {object_id} !")
         return response
     except InvalidId:
         err_msg = "The Detected Object ID you provided is not a valid ID!"

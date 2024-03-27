@@ -30,6 +30,7 @@ import {setTitle} from "../reducers/appBarSlice";
 import {Label} from "../api/models/label";
 import {ReactJSXElement} from "@emotion/react/types/jsx-namespace";
 import HoverBox, {Highlighted} from "../components/HoverBox";
+import {fetchLabel} from "../object_annotator/LabelSelector";
 
 
 export const CONCEPT_COLORS = [
@@ -52,10 +53,10 @@ export const loadVisualFeatures = async (annoId: string) => {
 
 
 export const buildAnnotation = (annotation: Annotation, conceptRanges: [number, number][], markedWords: number[],
-                                showConcepts: boolean, hoverToggle: boolean, handleConceptClick: any): [ReactJSXElement[], boolean[]] => {
+                                showConcepts: boolean, hoverToggle: boolean, handleConceptClick: any): [ReactJSXElement[], (boolean | null)[]] => {
     let buffer: ReactJSXElement[] = new Array<ReactJSXElement>()
     let tokens: string[] = annotation.tokens;
-    let flags: boolean[] = []
+    let flags: (boolean | null)[] = []
     let currRange = 0;
     let idxStart = -1;
     let idxEnd = -1;
@@ -66,9 +67,11 @@ export const buildAnnotation = (annotation: Annotation, conceptRanges: [number, 
     for (let i = 0; i < tokens.length; i++) {
         let token: string = tokens[i];
         let isPunct = token.match(/^[.,:!?;]$/);
-        let isHyphen = !isPunct && token === '-'
-        flags.push(!isHyphen && !isPunct)
-        // TODO: also remove the whitespace after a hyphen
+        if (!isPunct && token === '-') {
+            flags.push(null)
+        } else {
+            flags.push(!isPunct)
+        }
         if (!showConcepts || idxStart === -1 || idxStart > i) {
             let currentId = 'w' + i;
             if (isPunct) {
@@ -104,10 +107,11 @@ export const buildAnnotation = (annotation: Annotation, conceptRanges: [number, 
             if (idxStart === idxEnd) {
                 buffer.push(<b key={currentId} id={currentId} onClick={handleConceptClick}>
                     {" "}
-                    <abbr
-                        key={id + "-1"}
-                        id={id}
-                        className={"cr cr-" + currRange}>
+                    <abbr key={id + "-1"} id={id} className={"cr cr-" + currRange}
+                          style={{
+                              backgroundColor: CONCEPT_COLORS[currRange % 10],
+                              cursor: 'pointer', paddingTop: '2px',
+                          }}>
                         <a key={id + "-2"} id={id + '-open'} href="">[</a>
                         <HoverBox
                             word={tokens[idxStart]}
@@ -146,7 +150,7 @@ export const buildAnnotation = (annotation: Annotation, conceptRanges: [number, 
                                              backgroundColor: CONCEPT_COLORS[currRange % 10],
                                              cursor: 'pointer', paddingTop: '2px',
                                          }}>
-                                {flags[tokenIdx] && " "}
+                                {(flags[tokenIdx] && (tokenIdx === 0 || flags[tokenIdx - 1] !== null)) && " "}
                                 <HoverBox
                                     word={elem}
                                     conceptIdx={currRange}
@@ -203,7 +207,7 @@ const AnnotationView: FC = () => {
     const objectLabel: Label | undefined = useSelector((state: any) => state.object.objectLabel);
     const annotation: Annotation | undefined = useSelector((state: any) => state.annotation.annotation);
     const markedWords: number[] = useSelector((state: any) => state.annotation.markedWords);
-    const wordFlags: boolean[] = useSelector((state: any) => state.annotation.wordFlags);
+    const wordFlags: (boolean | null)[] = useSelector((state: any) => state.annotation.wordFlags);
     const prevWordColors: string[] | undefined = useSelector((state: any) => state.annotation.markedWordsPrevColors);
     const featsVis: boolean[] = useSelector((state: any) => state.annotation.featuresVis);
     const showFeats: boolean = useSelector((state: any) => state.annotation.showFeatures);
@@ -403,7 +407,7 @@ const AnnotationView: FC = () => {
                     if (objectLabel) {
                         dispatch(setTitle(`Annotation ${annoIntIdx + 1} of Object ${objectLabel.name}`));
                     } else {
-                        getRequest('label', obj.labelId).then(data => {
+                        fetchLabel(obj.labelId).then(data => {
                             if (data) {
                                 let label = data.result;
                                 dispatch(setObjectLabel(label));
@@ -451,7 +455,7 @@ const AnnotationView: FC = () => {
         }
     }, [idoc, imgUrl, objIntIdx, annoIntIdx]);
 
-    const setupTextHighlighting = (anno: Annotation, ranges: [number, number][], wFlags: boolean[]) => {
+    const setupTextHighlighting = (anno: Annotation, ranges: [number, number][], wFlags: (boolean | null)[]) => {
         let words = anno.tokens
         let selection = window.getSelection()
         if (selection && words.length > 0) {

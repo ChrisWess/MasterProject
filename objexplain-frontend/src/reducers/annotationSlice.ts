@@ -8,7 +8,7 @@ interface AnnotationPageState {
     annotation: Annotation | undefined;
     selectedConcept: number | undefined;
     markedWords: number[];
-    wordFlags: boolean[] | undefined;
+    wordFlags: (boolean | null)[] | undefined;
     markedWordsPrevColors: string[] | undefined;
     conceptSubstrings: string[] | undefined;
     conceptRanges: [number, number][] | undefined;
@@ -157,7 +157,7 @@ export const annotationPageSlice = createSlice({
             state.conceptSubstrings = conceptStrings
             state.conceptRanges = ranges
         },
-        setWordFlags: (state, action: PayloadAction<boolean[]>) => {
+        setWordFlags: (state, action: PayloadAction<(boolean | null)[]>) => {
             state.wordFlags = action.payload;
         },
         setMarkedWords: (state, action: PayloadAction<number[]>) => {

@@ -4,8 +4,9 @@ import {TextareaAutosize as BaseTextareaAutosize} from '@mui/base/TextareaAutosi
 import {styled} from '@mui/system';
 import {blue, grey} from "@mui/material/colors";
 import {useDispatch, useSelector} from "react-redux";
-import {Annotation} from "../api/models/annotation";
-import {clearSuggestedText} from "../reducers/annotationCreateSlice";
+import {addFullConcepts, clearSuggestedText, setMode, setNewAnnotation} from "../reducers/annotationCreateSlice";
+import {getRequest} from "../api/requests";
+import {DetectedObject} from "../api/models/object";
 
 
 const Textarea = styled(BaseTextareaAutosize)(
@@ -50,13 +51,26 @@ const AnnotationWriter: FC<AnnotationWriterProps> = ({value, index, ...other}) =
     const [annoText, setAnnoText] = useState<string>('');
 
     const dispatch = useDispatch();
+    const detObj: DetectedObject | undefined = useSelector((state: any) => state.object.detObj);
     const suggestedText: string | undefined = useSelector((state: any) => state.newAnno.suggestedText);
-    const annotation: Annotation | undefined = useSelector((state: any) => state.newAnno.newAnnotation);
-    const conceptRanges: [number, number][] | undefined = useSelector((state: any) => state.newAnno.conceptRanges);
 
     const handleTextAreaChange = (event: ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
         event.preventDefault();
         setAnnoText(event.target.value);
+    }
+
+    const submitAnnotation = () => {
+        if (detObj?.labelId) {
+            getRequest('annotation/preprocess', undefined,
+                {annotation: annoText, labelId: detObj.labelId}).then(data => {
+                if (data) {
+                    let anno = data.result
+                    dispatch(setNewAnnotation(anno));
+                    dispatch(addFullConcepts(anno.concepts))
+                    dispatch(setMode(2));
+                }
+            })
+        }
     }
 
     useEffect(() => {
@@ -75,10 +89,9 @@ const AnnotationWriter: FC<AnnotationWriterProps> = ({value, index, ...other}) =
                       sx={{minWidth: '100%', maxWidth: '100%', maxHeight: 140, minHeight: 85, fontSize: '13pt'}}
                       placeholder="Write your annotation by describing all characteristics of the shown object"/>
             <Box sx={{display: 'float'}}>
-                <Button sx={{width: '30%', float: 'right'}} onClick={() => {
-                    // TODO: submit annotation to backend, write result into newAnnotation state and
-                    //   then switch state to AnnotationViewer (modeId = 2)
-                }}>Submit Annotation</Button>
+                <Button sx={{width: '30%', float: 'right'}} onClick={submitAnnotation} disabled={!annoText}>
+                    Submit Annotation
+                </Button>
                 <Button sx={{width: '30%', float: 'right'}} onClick={() => {
                     dispatch(clearSuggestedText())
                     setAnnoText('')

@@ -13,6 +13,11 @@ import {ImageDocument} from "../api/models/imgdoc";
 import {clearBbox} from "../reducers/objectCreateSlice";
 
 
+export const fetchLabel = async (labelId: string) => {
+    return await getRequest('label', labelId)
+}
+
+
 interface LabelSelectProps {
     labelCaption: string;
     categoriesCaption: string;
@@ -95,10 +100,6 @@ const LabelSelect: FC<LabelSelectProps> = ({
             }
         }
         setQueriedLabels(labelList);
-    }
-
-    const fetchLabel = async (labelId: string) => {
-        return await getRequest('label', labelId)
     }
 
     const addCategoriesToLabel = async (label: Label) => {

@@ -4,19 +4,30 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import Typography from "@mui/material/Typography";
 import {useDispatch, useSelector} from "react-redux";
-import {clearConcepts, setConceptEditIdx, setNewAnnotation} from "../reducers/annotationCreateSlice";
+import {
+    clearConcepts,
+    removeAdjectiveAt,
+    removeNounAt,
+    setConceptEditIdx,
+    setMode,
+    setNewAnnotation
+} from "../reducers/annotationCreateSlice";
 import PhraseChip from "./PhraseChip";
-import {postRequest} from "../api/requests";
+import {getRequest} from "../api/requests";
+import {Label} from "../api/models/label";
 
 
 interface ConceptBuilderProps {
     index: number;
     value: number;
+    setAlertContent: Function;
+    setAlertSeverity: Function;
 }
 
 
-const ConceptBuilderView: FC<ConceptBuilderProps> = ({value, index, ...other}) => {
+const ConceptBuilderView: FC<ConceptBuilderProps> = ({value, index, setAlertContent, setAlertSeverity, ...other}) => {
     const dispatch = useDispatch();
+    const objectLabel: Label | undefined = useSelector((state: any) => state.object.objectLabel);
     const concAdjectives: string[][] = useSelector((state: any) => state.newAnno.adjectives);
     const concNouns: string[][] = useSelector((state: any) => state.newAnno.nouns);
     const adjectiveIdxs: number[][] = useSelector((state: any) => state.newAnno.adjectiveIdxs);
@@ -54,15 +65,13 @@ const ConceptBuilderView: FC<ConceptBuilderProps> = ({value, index, ...other}) =
                                                           token={token}
                                                           phraseIdx={adjectiveIdxs[conceptIdx][index]}
                                                           isNoun={false}
-                                                          handleDelete={() => {
-                                                          }}/>)}
+                                                          handleDelete={() => dispatch(removeAdjectiveAt(index))}/>)}
                         {concNouns[conceptIdx].map(
                             (token, index) => <PhraseChip key={'concChip' + index}
                                                           token={token}
                                                           phraseIdx={nounIdxs[conceptIdx][index]}
                                                           isNoun={true}
-                                                          handleDelete={() => {
-                                                          }}/>)}
+                                                          handleDelete={() => dispatch(removeNounAt(index))}/>)}
                     </Box>
                 </ListItem>)}
             {concAdjectives.slice(conceptIdx + 1).map((adjectives, index) => {
@@ -72,9 +81,31 @@ const ConceptBuilderView: FC<ConceptBuilderProps> = ({value, index, ...other}) =
         </List>)
     }, [concAdjectives, concNouns, adjectiveIdxs, nounIdxs, conceptIdx])
 
-    const submitAnnotation = () => {
-        // TODO
-        postRequest('annotation', {}).then(data => data && dispatch(setNewAnnotation(data.result)))
+    const submitAnnotationConcepts = () => {
+        let unfinishedIdxs = adjectiveIdxs
+            .map((adjIdxArr, index) => adjIdxArr.length && nounIdxs[index].length ? null : index)
+            .filter(value => value !== null)
+        if (unfinishedIdxs.length) {
+            dispatch(setConceptEditIdx(unfinishedIdxs[0]!))
+            setAlertSeverity('warning')
+            if (unfinishedIdxs.length == 1) {
+                setAlertContent('There is an unfinished concept definition with only adjectives, only nouns or no words at all!')
+            } else {
+                setAlertContent(`There are ${unfinishedIdxs.length} unfinished concept definitions with only adjectives, only nouns or no words at all!`)
+            }
+        } else if (objectLabel?.categories) {
+            let idxs: number[][] = adjectiveIdxs
+                .map((adjIdxArr, index) => [...adjIdxArr, ...nounIdxs[index]])
+                .filter(arr => arr.length)
+            let category = objectLabel.categories[0];
+            getRequest('annotation/fromIdxs', undefined,
+                {corpusIdxs: JSON.stringify(idxs), category: category}).then(data => {
+                if (data) {
+                    dispatch(setNewAnnotation(data.result));
+                    dispatch(setMode(2));
+                }
+            })
+        }
     }
 
     return <div
@@ -89,13 +120,12 @@ const ConceptBuilderView: FC<ConceptBuilderProps> = ({value, index, ...other}) =
                 <Typography variant='h6'>List of chosen Concepts:</Typography>
                 <Box width='60%'>
                     <Button sx={{width: '50%'}} onClick={() => dispatch(clearConcepts())}>Clear all Concepts</Button>
-                    <Button sx={{width: '50%'}} onClick={() => {
-                        // TODO: submit annotation to backend, write result into newAnnotation state and
-                        //   then switch state to AnnotationViewer (modeId = 2)
-                    }}>Build Annotation</Button>
+                    <Button sx={{width: '50%'}} onClick={submitAnnotationConcepts} disabled={!adjectiveIdxs.length}>
+                        Build Annotation
+                    </Button>
                 </Box>
             </Box>
-            <Box sx={{height: '230px', border: '3px solid', borderColor: '#203020'}}>
+            <Box sx={{height: '230px', border: '3px solid', borderColor: '#203020', overflow: 'auto'}}>
                 {conceptList}
             </Box>
         </Box>}

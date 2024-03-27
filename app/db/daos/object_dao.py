@@ -297,7 +297,7 @@ class ObjectDAO(JoinableDAO):
                 label_id = label['_id']
             if isinstance(annotations, str):
                 self._helper_list.append(
-                    AnnotationDAO().prepare_annotation(annotations, label_id, user_id, db_session))
+                    AnnotationDAO().prepare_annotation(annotations, label_id, user_id, db_session=db_session))
                 annotations = self._helper_list
             else:
                 annotations = AnnotationDAO().prepare_annotations(annotations, label_id, user_id,

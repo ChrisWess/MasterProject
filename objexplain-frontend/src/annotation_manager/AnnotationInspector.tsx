@@ -1,7 +1,7 @@
 import {FC, useMemo} from "react";
-import {Box, Button} from "@mui/material";
+import {Box} from "@mui/material";
 import {buildAnnotation} from "./AnnotationView";
-import {useDispatch, useSelector} from "react-redux";
+import {useSelector} from "react-redux";
 import {Annotation} from "../api/models/annotation";
 
 
@@ -12,8 +12,6 @@ interface AnnotationInspectorProps {
 
 
 const AnnotationInspector: FC<AnnotationInspectorProps> = ({value, index, ...other}) => {
-
-    const dispatch = useDispatch();
     const annotation: Annotation | undefined = useSelector((state: any) => state.newAnno.newAnnotation);
     const conceptRanges: [number, number][] | undefined = useSelector((state: any) => state.newAnno.conceptRanges);
 
@@ -21,6 +19,7 @@ const AnnotationInspector: FC<AnnotationInspectorProps> = ({value, index, ...oth
         if (annotation && conceptRanges) {
             let result = buildAnnotation(annotation, conceptRanges, [],
                 true, false, () => {
+                    // TODO: maybe highlight clicked concept in the list
                 })
             return result[0]
         }
@@ -35,8 +34,9 @@ const AnnotationInspector: FC<AnnotationInspectorProps> = ({value, index, ...oth
         {...other}
     >
         {value === index && <Box sx={{p: 1}}>
-            {!!newlyProcessedAnno && newlyProcessedAnno}
-            <Button>Finalize Annotation</Button>
+            <Box>
+                {!!newlyProcessedAnno && newlyProcessedAnno}
+            </Box>
         </Box>}
     </div>
 }

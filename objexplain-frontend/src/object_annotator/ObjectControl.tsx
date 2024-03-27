@@ -16,6 +16,7 @@ import {clearObject, setObjectLabel} from "../reducers/objectSlice";
 import {clearDoc, disableAnnoMode} from "../reducers/idocSlice";
 import ListItemButton from "@mui/material/ListItemButton";
 import AddIcon from "@mui/icons-material/Add";
+import {DetectedObject} from "../api/models/object";
 
 
 export const getMappedLabel = (labelsMap: [string, Label][], labelId: string) => {
@@ -39,13 +40,12 @@ const ObjectControlPanel: FC = () => {
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
     const labelsMap: [string, Label][] | undefined = useSelector((state: any) => state.iDoc.labelMap);
     const objIdx: number | undefined = useSelector((state: any) => state.object.objIdx);
+    const detObj: DetectedObject | undefined = useSelector((state: any) => state.object.detObj);
     const objectLabel: Label | undefined = useSelector((state: any) => state.object.objectLabel);
 
     const annoList = useMemo(() => {
-        // TODO: why do I not get the detObj state? Any good reason? Check if it is defined in ObjectPage!
-        let objs = idoc?.objects;
-        if (objs && objIdx !== undefined) {
-            let annos = objs[objIdx].annotations
+        if (detObj?.annotations && objIdx !== undefined) {
+            let annos = detObj.annotations
             return (<List className="annotations" key="annoList">
                 <ListItemButton key={'newAnnoButt'} sx={{py: 0}}
                                 onClick={() => project && idoc && objIdx !== undefined &&
@@ -82,7 +82,7 @@ const ObjectControlPanel: FC = () => {
             </List>)
         }
         return undefined
-    }, [idoc, objIdx])
+    }, [idoc, detObj, objIdx])
 
     const toProjectView = () => {
         if (project) {
@@ -101,11 +101,11 @@ const ObjectControlPanel: FC = () => {
     }
 
     useEffect(() => {
-        if (idoc && idoc.objects && objIdx != undefined && labelsMap) {
-            let mappedLabel = getMappedLabel(labelsMap, idoc.objects[objIdx].labelId);
+        if (detObj && labelsMap) {
+            let mappedLabel = getMappedLabel(labelsMap, detObj.labelId);
             mappedLabel && dispatch(setObjectLabel(mappedLabel));
         }
-    }, [idoc, objIdx, labelsMap]);
+    }, [detObj, labelsMap]);
 
     return (
         <Box sx={{height: '100%', overflow: 'auto'}}>

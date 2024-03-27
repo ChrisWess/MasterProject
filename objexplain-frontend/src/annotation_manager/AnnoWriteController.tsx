@@ -49,6 +49,10 @@ const WriteController: FC = () => {
         }
     }, [detObj, suggestedText]);
 
+    // TODO: allow saving how often an annotation has been selected in "Text Writer". Use a weighted random
+    //  selection for annotations to show the users, weighted by the number of selections, given the type of object.
+    // TODO: Add another list that contains suggested annotations from an AI, that gets the object image as input.
+
     return <>
         <Typography variant='h6'>Write or select a full annotation</Typography>
         <Divider sx={{my: 1}}/>

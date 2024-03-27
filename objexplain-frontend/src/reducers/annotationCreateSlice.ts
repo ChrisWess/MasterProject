@@ -141,6 +141,26 @@ export const newAnnotationPageSlice = createSlice({
             state.nouns = nounArr;
             state.nounIdxs = nidxs;
         },
+        removeAdjectiveAt: (state, action: PayloadAction<number>) => {
+            let rmvIdx = action.payload;
+            let editIdx = state.conceptEditIdx;
+            let adjArr = state.adjectives;
+            let aidxs = state.adjectiveIdxs;
+            adjArr[editIdx].splice(rmvIdx, 1)
+            aidxs[editIdx].splice(rmvIdx, 1)
+            state.adjectives = adjArr;
+            state.adjectiveIdxs = aidxs;
+        },
+        removeNounAt: (state, action: PayloadAction<number>) => {
+            let rmvIdx = action.payload;
+            let editIdx = state.conceptEditIdx;
+            let nounArr = state.nouns;
+            let nidxs = state.nounIdxs;
+            nounArr[editIdx].splice(rmvIdx, 1)
+            nidxs[editIdx].splice(rmvIdx, 1)
+            state.nouns = nounArr;
+            state.nounIdxs = nidxs;
+        },
         setConceptEditIdx: (state, action: PayloadAction<number>) => {
             state.conceptEditIdx = action.payload;
         },
@@ -233,10 +253,28 @@ export const newAnnotationPageSlice = createSlice({
             state.suggestedNouns = action.payload;
         },
         setNewAnnotation: (state, action: PayloadAction<Annotation>) => {
-            state.newAnnotation = action.payload;
-        },
-        setConceptRanges: (state, action: PayloadAction<[number, number][]>) => {
-            state.conceptRanges = action.payload;
+            let anno = action.payload;
+            let ranges: [number, number][] = []
+            let prevVal = -1
+            for (let i = 0; i < anno.conceptMask.length; i++) {
+                let maskVal = anno.conceptMask[i];
+                if (maskVal === -1) {
+                    if (prevVal !== maskVal) {
+                        ranges[ranges.length - 1][1] = i - 1
+                        if (ranges.length === anno.conceptIds.length) {
+                            break
+                        }
+                    }
+                } else if (prevVal === -1) {
+                    ranges.push([i, -1])
+                } else if (prevVal !== maskVal) {
+                    ranges[ranges.length - 1][1] = i - 1
+                    ranges.push([i, -1])
+                }
+                prevVal = maskVal;
+            }
+            state.newAnnotation = anno;
+            state.conceptRanges = ranges;
         },
     }
 });
@@ -245,10 +283,11 @@ export const newAnnotationPageSlice = createSlice({
 export const {
     setMode, setSuggestedText, clearNewAnnoView, clearConcepts,
     clearSuggestedText, addNewConceptDraft, addAdjective, addNoun,
-    setConceptEditIdx, addFullConcept, addFullConcepts, initAnnoSelectionFlags,
-    markAnnoSelected, initConceptSelectionFlags, addSelectedConcept, selectConceptIdx,
-    setSuggestedConcepts, setSuggestedAdjectives, setSuggestedNouns, setNewAnnotation,
-    setConceptRanges,
+    removeAdjectiveAt, removeNounAt, setConceptEditIdx, addFullConcept,
+    addFullConcepts, initAnnoSelectionFlags, markAnnoSelected, initConceptSelectionFlags,
+    addSelectedConcept, selectConceptIdx, setSuggestedConcepts, setSuggestedAdjectives,
+    setSuggestedNouns, setNewAnnotation,
+
 } = newAnnotationPageSlice.actions;
 
 export default newAnnotationPageSlice.reducer;
