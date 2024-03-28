@@ -143,6 +143,8 @@ const DocControlPanel: FC = () => {
 
     const objList = useMemo(() => {
         let objs = idoc?.objects;
+        // TODO: If there are no objects yet, make the first list option be a button that allows
+        //   automatically detecting objects in the current image.
         // TODO: open a confirmation dialog when clicking object deletion that also makes it possible to
         //  to transfer annotations of the deleted object to another or a new object. If the user clicks
         //  discard, the annotations should still be archived (bc it is some of our most valuable data in the DB)

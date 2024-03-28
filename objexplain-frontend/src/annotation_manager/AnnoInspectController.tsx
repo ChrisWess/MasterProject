@@ -9,14 +9,22 @@ import {CONCEPT_COLORS} from "./AnnotationView";
 import {postRequest} from "../api/requests";
 import {useNavigate} from "react-router-dom";
 import {DetectedObject} from "../api/models/object";
+import {setDoc} from "../reducers/idocSlice";
+import {setObject} from "../reducers/objectSlice";
+import {ImageDocument} from "../api/models/imgdoc";
+import {ProjectStats} from "../api/models/project";
+import {clearNewAnnoView} from "../reducers/annotationCreateSlice";
 
 
 const AnnoInspectController: FC = () => {
     const navigate = useNavigate();
     const dispatch = useDispatch();
+    const project: ProjectStats | undefined = useSelector((state: any) => state.mainPage.currProject);
+    const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
     const annotation: Annotation | undefined = useSelector((state: any) => state.newAnno.newAnnotation);
     const conceptRanges: [number, number][] | undefined = useSelector((state: any) => state.newAnno.conceptRanges);
     const detObj: DetectedObject | undefined = useSelector((state: any) => state.object.detObj);
+    const objIdx: number | undefined = useSelector((state: any) => state.object.objIdx);
 
     const selectedConcepts = useMemo(() => {
         return (<List className="selectedConcepts" key="conceptList"
@@ -53,10 +61,18 @@ const AnnoInspectController: FC = () => {
             delete annoEntity.updatedAt
             postRequest('annotation/full', {annotation: annoEntity, objectId: detObj._id})
                 .then(data => {
-                    if (data) {
-                        console.log(data)
-                        // TODO: put annotation into idoc list => dispatch(setDoc())
-                        navigate('TODO')
+                    if (data && project && idoc?.objects && detObj.annotations && objIdx !== undefined) {
+                        annoEntity._id = data.result
+                        let newAnno: Annotation = annoEntity as Annotation
+                        let newAnnoIdx = detObj.annotations.length
+                        let annotationList: Annotation[] = [...detObj.annotations, newAnno]
+                        let newObj = {...detObj, annotations: annotationList}
+                        dispatch(setObject(newObj))
+                        let newObjs = [...idoc.objects.slice(0, objIdx), newObj, ...idoc.objects.slice(objIdx + 1)]
+                        let newDoc = {...idoc, objects: newObjs}
+                        dispatch(setDoc(newDoc))
+                        dispatch(clearNewAnnoView())
+                        navigate(`/project/${encodeURIComponent(project.title)}/idoc/${idoc._id}/${objIdx}/${newAnnoIdx}`)
                     }
                 })
         }

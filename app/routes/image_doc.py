@@ -153,7 +153,9 @@ def add_image():
                 err_msg = "The Project ID you provided is not a valid ID!"
                 application.logger.error(err_msg)
                 abort(404, err_msg)
-        response = ImgDocDAO().add(form["name"], filename, file.read(), proj_id, generate_response=True)
+        detect_objects = form.get('detectObjects', True)
+        response = ImgDocDAO().add(form["name"], filename, file.read(), proj_id,
+                                   detect_objs=detect_objects, generate_response=True)
         doc_id = response['result']
         if proj_id:
             ProjectDAO().add_idoc_to_project(proj_id, ObjectId(doc_id), False)
@@ -203,6 +205,18 @@ def add_annotated_image():
         err_msg = 'The name of the uploaded file indicates that you uploaded the wrong (image) file format!'
         application.logger.error(err_msg)
         abort(400, err_msg)
+
+
+@application.route('/idoc/<doc_id>/detection', methods=['POST'])
+def detect_objects_in_image(doc_id=None):
+    args = request.json
+    try:
+        return ImgDocDAO().detect_objects_for_image(ObjectId(doc_id), classes=args.get('classes', None),
+                                                    generate_response=True)
+    except InvalidId:
+        err_msg = "The Image Document ID you provided is not a valid ID!"
+        application.logger.error(err_msg)
+        abort(404, err_msg)
 
 
 @application.route('/idoc', methods=['PUT'])

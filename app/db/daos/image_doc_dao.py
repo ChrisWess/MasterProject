@@ -12,6 +12,7 @@ from pymongo import ASCENDING, DESCENDING, TEXT
 from app import config, fs
 from app.db.daos.annotation_dao import AnnotationDAO
 from app.db.daos.base import JoinableDAO, dao_query, dao_update, BaseDAO
+from app.db.daos.label_dao import LabelDAO
 from app.db.daos.object_dao import ObjectDAO
 from app.db.daos.user_dao import UserDAO
 from app.db.daos.vis_feature_dao import VisualFeatureDAO
@@ -23,6 +24,7 @@ from app.db.stats.daos.image_stats import ImageStatsDAO
 from app.db.stats.daos.project_progress import ProjectProgressDAO
 from app.db.stats.daos.work_stats import WorkHistoryStatsDAO
 from app.db.util import encode_as_base64
+from app.preproc.object import detect_objects
 
 
 def resize_with_padding(img, exp_width, exp_height):
@@ -347,6 +349,25 @@ class ImgDocDAO(JoinableDAO):
     def delete_by_name(self, name, generate_response=False, db_session=None):
         return self.simple_delete('name', name, generate_response, db_session)
 
+    def detect_objects_for_image(self, doc_id, classes=None, save_objs=True, generate_response=False, db_session=None):
+        user_id = UserDAO().get_current_user_id()
+        img = self.load_image(doc_id, db_session=db_session)
+        img = Image.open(BytesIO(img))
+        objs = detect_objects(img, classes)
+        obj_entities = []
+        for bbox, cls_name in objs:
+            label_name = 'generic ' + cls_name
+            label_id = LabelDAO().find_or_add(label_name, cls_name, projection='_id')['_id']
+            new_obj = DetectedObject(id=ObjectId(), labelId=label_id, tlx=bbox[0],
+                                     tly=bbox[1], brx=bbox[2], bry=bbox[3], created_by=user_id)
+            if not save_objs:
+                new_obj = new_obj.to_dict()
+            obj_entities.append(new_obj)
+        object_dao = ObjectDAO()
+        if save_objs:
+            obj_entities = object_dao.add_many(doc_id, obj_entities, db_session=db_session)
+        return object_dao.to_response(obj_entities) if generate_response else obj_entities
+
     @staticmethod
     def process_image_data(img_data, thumb_w=200, thumb_h=200):
         img = Image.open(BytesIO(img_data))
@@ -356,7 +377,7 @@ class ImgDocDAO(JoinableDAO):
         img_io, thumb_io = BytesIO(), BytesIO()
         img.save(img_io, format='JPEG')
         thumb.save(thumb_io, format='JPEG')
-        return img_io.getvalue(), thumb_io.getvalue(), img.width, img.height
+        return img_io.getvalue(), thumb_io.getvalue(), img.width, img.height, img
 
     def insert_doc(self, doc, image, thumb, proj_id, has_annos=True, has_gaps=False,
                    generate_response=True, db_session=None):
@@ -377,7 +398,8 @@ class ImgDocDAO(JoinableDAO):
             return response
 
     # @transaction
-    def add(self, name, fname, image, proj_id=None, objects=None, generate_response=False, db_session=None):
+    def add(self, name, fname, image, proj_id=None, objects=None, detect_objs=False,
+            generate_response=False, db_session=None):
         # creates a new document in the docs collection
         user_id = UserDAO().get_current_user_id()
         has_annos = has_unanno_objs = False
@@ -394,7 +416,15 @@ class ImgDocDAO(JoinableDAO):
                     has_annos = True
                 else:
                     has_unanno_objs = True
-        image, thumb, width, height = self.process_image_data(image)
+        image, thumb, width, height, pil_img = self.process_image_data(image)
+        if detect_objs:
+            objs = detect_objects(pil_img)
+            for bbox, cls_name in objs:
+                label_name = 'generic ' + cls_name
+                label_id = LabelDAO().find_or_add(label_name, cls_name, projection='_id')['_id']
+                new_obj = DetectedObject(id=ObjectId(), labelId=label_id, tlx=bbox[0],
+                                         tly=bbox[1], brx=bbox[2], bry=bbox[3], created_by=user_id)
+                objects.append(new_obj)
         doc = ImgDoc(project_id=proj_id, name=name, fname=fname, width=width,
                      height=height, created_by=user_id, objects=objects)
         # TODO: multi-document transactions with gridfs raise an error! Find workaround for ensuring files
@@ -432,7 +462,7 @@ class ImgDocDAO(JoinableDAO):
         image = doc['image']
         if type(image) is str:
             image = b64decode(image)
-        image, thumb, width, height = self.process_image_data(image)
+        image, thumb, width, height, pil_img = self.process_image_data(image)
         proj_id = doc.get('projectId', None)
         doc = ImgDoc(project_id=proj_id, name=doc['name'], fname=doc['fname'],
                      width=width, height=height, created_by=user_id, objects=objects)
@@ -445,8 +475,9 @@ class ImgDocDAO(JoinableDAO):
     # @transaction
     def add_with_annos(self, name, fname, image, annotations, label_id, user_id, proj_id=None,
                        as_bulk=False, generate_response=False, db_session=None):
+        # TODO: allow using object detection. Detect only classes that are in categories list of the label with label_id
         # creates a new document in the docs collection
-        image, thumb, width, height = self.process_image_data(image)
+        image, thumb, width, height, pil_img = self.process_image_data(image)
         has_annos = bool(annotations)
         if has_annos:
             annotations = AnnotationDAO().prepare_annotations(annotations, label_id, user_id, True)
@@ -462,7 +493,7 @@ class ImgDocDAO(JoinableDAO):
 
     @dao_update(update_many=False)
     def update_image(self, doc_id, new_img):
-        new_img, thumb, width, height = self.process_image_data(new_img)
+        new_img, thumb, width, height, _ = self.process_image_data(new_img)
         self.add_query("_id", doc_id)
         self.add_update('image', new_img)
         self.add_update('width', width)

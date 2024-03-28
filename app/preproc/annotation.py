@@ -154,6 +154,7 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
         # https://stackoverflow.com/questions/57049737/how-can-i-extract-all-phrases-from-a-sentence
         self.curr_tokens.clear()
         tokenized = self.toknizr.analyze(text)
+        # TODO: add the additional functionality from the multi-line version
         for np in tokenized.noun_chunks:
             # Noun chunks are spacy spans
             root_noun = np.root
