@@ -1,3 +1,2 @@
 /venv
-/app/coref/base/model_saves/*
-/app/coref/base/logs/*
+/app/preproc/yolo_models/*
