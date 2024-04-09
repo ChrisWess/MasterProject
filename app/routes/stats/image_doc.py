@@ -4,7 +4,7 @@ from app.db.stats.daos.image_stats import ImageStatsDAO
 
 
 @application.route('/stats/idoc', methods=['GET'])
-def overview():
+def image_overview():
     return ImageStatsDAO().overview()
 
 

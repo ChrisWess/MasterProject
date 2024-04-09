@@ -288,24 +288,61 @@ class AnnotationDAO(JoinableDAO):
                 self._field_check[key] = None
                 concept_word_idx_lists[idx] = key
                 idx += 1
-        idxs_exist = CorpusDAO().indices_exist(self._helper_list, True, db_session=db_session)
+        corpus = CorpusDAO()
+        idxs_exist = corpus.indices_exist(self._helper_list, True, db_session=db_session)
         self._helper_list.clear()
         if not idxs_exist:
             self._field_check.clear()
             raise ValueError('Not all provided word indices exist in the database!')
         concept_dao = ConceptDAO()
         concepts = concept_dao.find_by_keys(concept_word_idx_lists, db_session=db_session)
-        cidx = 0
-        wspace = ' '
-        # TODO: if any concepts contain the noun subject, then take collect all adjectives belonging to these concepts
-        #  and start the annotation with "this <comma-seperated, collected adjectives> <main_category> has...".
-        #  The mask and concept_ids must also be adjusted accordingly (maybe save a stat that contains the idx
-        #  of the subject-word).
+        comma, wspace = ',', ' '
+        subj_concepts = None
+        subj_index = corpus.subject_entry['index']
+        cidx = idx = 0
+        for concept in tuple(concepts):
+            if subj_index in concept['phraseIdxs']:
+                if subj_concepts is None:
+                    subj_concepts = [concept]
+                else:
+                    subj_concepts.append(concept)
+                del concepts[idx]
+            else:
+                idx += 1
         # TODO: the annotation would also be a little more readable, if we identify if the root noun of a concept
         #  is singular. If it is singular, then prefix the concept with the word "a" (e.g. a long beak).
-        self._helper_list.extend(('this', main_category, 'has'))
-        annotation = f'this {main_category} has'
-        mask, concept_ids = [-1] * 3, []
+        #  Maybe add new field to CorpusWord "singularFlag" that is null for adjectives and bool for nouns?
+        if subj_concepts:
+            self._helper_list.append('this')
+            annotation = 'this '
+            mask, concept_ids = [-1], []
+            for i, concept in enumerate(subj_concepts, start=1):
+                del self._field_check[concept['key']]
+                adjs = concept['phraseWords'][:-concept['nounCount']]
+                for j, adj in enumerate(adjs, start=1):
+                    self._helper_list.append(adj)
+                    annotation += adj
+                    if j < len(adjs):
+                        annotation += comma + wspace
+                        self._helper_list.append(comma)
+                concept_ids.append(concept['_id'])
+                mask.extend((cidx,) * (2 * len(adjs) - 1))
+                if i < len(subj_concepts):
+                    self._helper_list.append(comma)
+                    annotation += comma + wspace
+                    mask.append(-1)
+                else:
+                    annotation += wspace
+                cidx += 1
+            annotation += main_category + ' has'
+            self._helper_list.append(main_category)
+            self._helper_list.append('has')
+            mask.append(-1)
+            mask.append(-1)
+        else:
+            self._helper_list.extend(('this', main_category, 'has'))
+            annotation = wspace.join(self._helper_list)
+            mask, concept_ids = [-1] * 3, []
         for con in concepts:
             del self._field_check[con['key']]
             concept_ids.append(con['_id'])
@@ -337,7 +374,7 @@ class AnnotationDAO(JoinableDAO):
                 annotation += wspace + wspace.join(phrase)
                 mask.extend((cidx,) * len(phrase))
                 if i < last_split_pos:
-                    enum_tok = ','
+                    enum_tok = comma
                     annotation += enum_tok
                     self._helper_list.append(enum_tok)
                     mask.append(-1)
@@ -354,7 +391,11 @@ class AnnotationDAO(JoinableDAO):
         mask.append(-1)
         anno = Annotation(text=annotation, tokens=self._helper_list.copy(),
                           concept_mask=mask, concept_ids=concept_ids, created_by=user_id).to_dict()
-        anno['concepts'] = concepts
+        if subj_concepts is None:
+            anno['concepts'] = concepts
+        else:
+            subj_concepts.extend(concepts)
+            anno['concepts'] = subj_concepts
         self._helper_list.clear()
         return self.to_response(anno) if generate_response else anno
 

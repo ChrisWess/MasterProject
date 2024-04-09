@@ -1,8 +1,8 @@
-from app.db.stats.daos.base import SingleDocStatsDAO
+from app.db.stats.daos.base import CategoricalDocStatsDAO
 from app.db.stats.models.image_doc import ImagePrioStat
 
 
-class PrioStatsDAO(SingleDocStatsDAO):
+class PrioStatsDAO(CategoricalDocStatsDAO):
     __slots__ = '_in_ids', '_prio_query'
 
     def __init__(self):

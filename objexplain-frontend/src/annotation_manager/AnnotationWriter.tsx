@@ -7,6 +7,7 @@ import {useDispatch, useSelector} from "react-redux";
 import {addFullConcepts, clearSuggestedText, setMode, setNewAnnotation} from "../reducers/annotationCreateSlice";
 import {getRequest} from "../api/requests";
 import {DetectedObject} from "../api/models/object";
+import {Annotation} from "../api/models/annotation";
 
 
 const Textarea = styled(BaseTextareaAutosize)(
@@ -53,6 +54,7 @@ const AnnotationWriter: FC<AnnotationWriterProps> = ({value, index, ...other}) =
     const dispatch = useDispatch();
     const detObj: DetectedObject | undefined = useSelector((state: any) => state.object.detObj);
     const suggestedText: string | undefined = useSelector((state: any) => state.newAnno.suggestedText);
+    const annotation: Annotation | undefined = useSelector((state: any) => state.newAnno.newAnnotation);
 
     const handleTextAreaChange = (event: ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
         event.preventDefault();
@@ -74,8 +76,12 @@ const AnnotationWriter: FC<AnnotationWriterProps> = ({value, index, ...other}) =
     }
 
     useEffect(() => {
-        suggestedText && setAnnoText(annoText + suggestedText)
-    }, [suggestedText]);
+        if (annotation) {
+            setAnnoText(annotation.text)
+        } else {
+            suggestedText && setAnnoText(annoText + suggestedText)
+        }
+    }, [suggestedText, annotation]);
 
     return <div
         hidden={value !== index}

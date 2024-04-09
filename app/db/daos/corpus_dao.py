@@ -9,7 +9,7 @@ from app.preproc.annotation import NounPhrase
 
 
 class CorpusDAO(BaseDAO):
-    __slots__ = "_word_search_content", "_uncased_word_search"
+    __slots__ = "_word_search_content", "_uncased_word_search", "subject_entry"
 
     def __init__(self):
         # Initialize mongodb collection of documents
@@ -19,6 +19,8 @@ class CorpusDAO(BaseDAO):
         self._word_search_content = {"$regex": None, "$options": 'im'}
         self._uncased_word_search = {"text": self._word_search_content}
 
+        from app import SUBJECT_WORD
+        self.subject_entry = SUBJECT_WORD
         # TODO: add collection with inverted index for concepts
         #  (a concept corresponds to a document in the inverted index)
 

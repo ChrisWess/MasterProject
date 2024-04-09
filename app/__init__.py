@@ -116,3 +116,19 @@ elif config.DEBUG:
     ROOT_ADMIN = _get_demo_user()
 if ROOT_ADMIN:
     ROOT_ADMIN = _setup_root_user(mdb.users, ROOT_ADMIN)
+
+
+def _setup_subject_noun(corpusdb):
+    # Check or set up subject
+    subj_str = 'subject'
+    subject_noun = {"text": subj_str, "lemma": subj_str, 'nounFlag': True}
+    word_data = corpusdb.find_one(subject_noun)
+    if word_data is None:
+        from app.db.daos.manage_index import CorpusIndexManager
+        subject_noun['index'] = CorpusIndexManager().get_incremented_index()
+        result = corpusdb.insert_one(subject_noun)
+        subject_noun['_id'] = result.inserted_id
+    return word_data
+
+
+SUBJECT_WORD = _setup_subject_noun(mdb.corpus)

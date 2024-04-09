@@ -34,8 +34,7 @@ class CorpusWord(DataBaseModel):
     Words in the corpus must not necessarily be present in any concept doc of the database.
     """
     # Could add support for other languages (=> add attribute lang e.g. lang="de")
-    index_val: NonNegativeInt = Field(
-        alias="index")  # TODO: Same lemmas get same index. Use ID if exact match required!
+    index_val: NonNegativeInt = Field(alias="index")
     text: Annotated[str, StringConstraints(min_length=1, max_length=30,
                                            strip_whitespace=True, to_lower=True)]  # lower-case word
     lemma: Annotated[str, StringConstraints(min_length=1, max_length=30, strip_whitespace=True, to_lower=True)]

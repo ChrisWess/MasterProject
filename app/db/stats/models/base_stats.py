@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Union
 
 from pydantic import BaseModel, Field
 
@@ -6,7 +7,7 @@ from app.db.models.base_model import PyObjectId
 
 
 class StatsBase(BaseModel):
-    id: PyObjectId = Field(alias="_id", default=None)
+    id: Union[PyObjectId, dict] = Field(alias="_id", default=None)
     is_valid: bool = Field(alias="isValid", default=True)
     updated_at_ts: datetime = Field(default_factory=datetime.now, alias="updatedAt")
 

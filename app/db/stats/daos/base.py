@@ -3,7 +3,7 @@ from copy import deepcopy
 from datetime import timedelta, datetime
 from functools import wraps
 
-from pymongo import UpdateOne
+from pymongo import UpdateOne, DESCENDING, InsertOne
 
 from app import mdb
 from app.db.daos.base import AbstractDAO
@@ -17,7 +17,7 @@ class AbstractStatsDAO(AbstractDAO):
         pass
 
 
-class SingleDocStatsDAO(AbstractStatsDAO):
+class CategoricalDocStatsDAO(AbstractStatsDAO):
     __slots__ = ("_conf_keys", "refer_coll_name", "data_coll", "model", "_fetch_stat_query", "_invalidate_cache",
                  "_in_ids_op", "_stat_agg", "_bulk_update", "_id_match_op", "_projection_dict")
 
@@ -86,16 +86,38 @@ class SingleDocStatsDAO(AbstractStatsDAO):
         return {"result": result, "numResults": 1, "status": 200,
                 'model': self.model.__name__, 'isComplete': True}
 
-    def find_all_stats(self, projection=None, generate_response=False, get_cursor=False, db_session=None):
+    @staticmethod
+    def _sort_result(result, sorting, do_skip):
+        if do_skip:
+            sort_by_id_flag = False
+            for key in sorting:
+                if key == '_id' or (type(key) is tuple and key[0] == '_id'):
+                    sort_by_id_flag = True
+            if not sort_by_id_flag:
+                sorting.append('_id')
+        return result.sort(sorting)
+
+    def find_all_stats(self, projection=None, generate_response=False, get_cursor=False, db_session=None, **kwargs):
         projection = self.build_projection(projection)
-        if get_cursor:
-            projection_copy = deepcopy(projection) if projection else projection
-            result = self.collection.find(self._fetch_stat_query, projection_copy, session=db_session)
-        else:
-            result = list(self.collection.find(self._fetch_stat_query, projection, session=db_session))
-        if projection:
+        if get_cursor and projection:
+            projection_copy = deepcopy(projection)
             projection.clear()
-        return self.to_response(result) if generate_response else result
+            projection = projection_copy
+        result = self.collection.find(self._fetch_stat_query, projection, session=db_session)
+        skip = kwargs.get('skip', None)
+        sort = kwargs.get('sort', None)
+        if sort:
+            result = self._sort_result(result, sort, skip is not None)
+        if skip is not None:
+            result = result.skip(skip)
+        limit = kwargs.get('limit', None)
+        if limit is not None:
+            result = result.limit(limit)
+        if not get_cursor:
+            result = list(result)
+            if projection:
+                projection.clear()
+        return self.to_response(result) if not get_cursor and generate_response else result
 
     def find_stats_by_ids(self, doc_ids, projection=None, generate_response=False, get_cursor=False, db_session=None):
         assert doc_ids, 'Neither None nor empty list allowed!'
@@ -111,7 +133,7 @@ class SingleDocStatsDAO(AbstractStatsDAO):
         del self._in_ids_op['$in']
         if projection:
             projection.clear()
-        return self.to_response(result) if generate_response else result
+        return self.to_response(result) if not get_cursor and generate_response else result
 
     def find_stats_by_id(self, doc_id, projection=None, generate_response=False, db_session=None):
         projection = self.build_projection(projection)
@@ -176,6 +198,8 @@ class SingleDocStatsDAO(AbstractStatsDAO):
                     'model': self.model.__name__, 'isComplete': False}
         else:
             return doc_ids
+        # TODO: result may be too large, which will cause memory issues. If this happens, split the update into batches
+        #   and bulk_write these batches to the DB (also in MultiDimDocStatsDAO).
         if generate_response:
             result = list(result)
             if result:
@@ -234,6 +258,184 @@ class SingleDocStatsDAO(AbstractStatsDAO):
                 self._fetch_stat_query['_id'] = doc_ids
                 self.collection.update_one(self._fetch_stat_query, self._invalidate_cache, session=db_session)
             del self._fetch_stat_query['_id']
+
+
+class MultiDimDocStatsDAO(CategoricalDocStatsDAO):
+    __slots__ = ("id_mapping", "invalidate_after", "_in_ids", "_or_queries", "_or_ids", "_validity_check",
+                 "_match_queries", "_match", "_project_agg", "_sort_list", "_sort_defs", "_sorting", "_skip",
+                 "_limiter", "_agg_pipe")
+
+    def __init__(self, stat_coll, data_coll, stat_model, stat_agg_pipe, id_mapping, invalidate_after_sec=600):
+        super().__init__(stat_coll, data_coll, stat_model, stat_agg_pipe)
+        # It is not always possible or very difficult to keep track which data dimension caused the invalidation
+        # of a stat. Therefore, we only cache stats in a time-based manner here => Do not register these DAOs
+        # in their corresponding base DAO.
+        self.id_mapping = id_mapping
+        self.invalidate_after = invalidate_after_sec
+        lookups = {}
+        for key, dao in id_mapping.items():
+            lookups[key] = {
+                "$lookup": {
+                    "from": dao().collection_name,
+                    "localField": "_id." + key,
+                    "foreignField": "_id",
+                    "as": key,
+                }
+            }
+        self._lookups = lookups
+        self._in_ids = {'$in': None}
+        self._or_queries = [{'_id.' + key: None} for key in id_mapping]
+        self._or_ids = {'$or': self._or_queries}
+        self._time_check = {'$lt': None}
+        self._validity_check = {'$or': [{'isValid': False}, {'updatedAt': self._time_check}]}
+        self._match_queries = {}
+        self._match = {"$match": None}
+        self._project_agg = {'$project': self._projection_dict}
+        self._sort_defs = {}
+        self._sorting = {'$sort': self._sort_defs}
+        self._skip = {'$skip': None}
+        self._limiter = {'$limit': None}
+        self._agg_pipe = []
+
+    def to_response(self, result):
+        id_map = tuple((key, dao_cls()) for key, dao_cls in self.id_mapping.items())
+        if isinstance(result, list):
+            for res in result:
+                for key, dao in id_map:
+                    if key in res:
+                        res[key] = dao.payload_model(**res[key]).to_dict()
+                if '_id' in res:
+                    id_dims = res['_id']
+                    for dim, val in id_dims.items():
+                        id_dims[dim] = str(val)
+            return {"result": result, "numResults": len(result),
+                    "status": 200, 'model': self.model.__name__, 'isComplete': True}
+        if '_id' in result:
+            for key, dao in id_map:
+                if key in result:
+                    result[key] = dao.payload_model(**result[key]).to_dict()
+            id_dims = result['_id']
+            for dim, val in id_dims.items():
+                id_dims[dim] = str(val)
+        return {"result": result, "numResults": 1, "status": 200,
+                'model': self.model.__name__, 'isComplete': True}
+
+    def _build_query(self, sort, limit, skip, expand_dims, projection, generate_response, get_cursor, db_session):
+        self.build_projection(projection)
+        if sort is not None:
+            self._sort_defs.clear()
+            if type(sort) is str:
+                self._sort_defs[sort] = DESCENDING
+            else:
+                self._sort_defs.update(sort)
+            self._agg_pipe.append(self._sorting)
+        if skip is not None:
+            self._skip['$skip'] = skip
+            self._agg_pipe.append(self._skip)
+        if limit is not None:
+            self._limiter['$limit'] = limit
+            self._agg_pipe.append(self._limiter)
+        if expand_dims is not None:
+            if type(expand_dims) is str:
+                self._agg_pipe.append(self._lookups[expand_dims])
+                self._agg_pipe.append({'$unwind': '$' + expand_dims})
+            else:
+                for dim in expand_dims:
+                    self._agg_pipe.append(self._lookups[dim])
+                    self._agg_pipe.append({'$unwind': '$' + dim})
+        if self._projection_dict:
+            self._agg_pipe.append(self._project_agg)
+        if get_cursor:
+            agg = deepcopy(self._agg_pipe)
+            result = self.collection.aggregate(agg, session=db_session)
+        else:
+            result = list(self.collection.aggregate(self._agg_pipe, session=db_session))
+        self._agg_pipe.clear()
+        self._projection_dict.clear()
+        return self.to_response(result) if not get_cursor and generate_response else result
+
+    def find_dim_stats(self, dim_query, sort=None, limit=None, skip=None, expand_dims=None,
+                       projection=None, generate_response=False, get_cursor=False, db_session=None):
+        self._match['$match'] = dim_query
+        self._agg_pipe.append(self._match)
+        return self._build_query(sort, limit, skip, expand_dims, projection, generate_response, get_cursor, db_session)
+
+    def find_by_dim_val(self, dim_key, dim_val, sort=None, limit=None, skip=None, expand_dims=None,
+                        projection=None, generate_response=False, get_cursor=False, db_session=None):
+        self._match_queries['_id.' + dim_key] = dim_val
+        self._match['$match'] = self._match_queries
+        self._agg_pipe.append(self._match)
+        return self._build_query(sort, limit, skip, expand_dims, projection, generate_response, get_cursor, db_session)
+
+    def check_invalid(self, db_session=None):
+        self._time_check['$lt'] = datetime.now() - timedelta(0, self.invalidate_after)
+        return bool(self.collection.count_documents(self._validity_check, limit=1, session=db_session))
+
+    def update(self, force_update=False, generate_response=False, db_session=None):
+        # TODO: make this a cron job => we don't want to make users wait on their request, because of large updates
+        if not force_update and not self.check_invalid(db_session):
+            return
+        self.collection.delete_many(self._fetch_stat_query, session=db_session)
+        result = self.data_coll.aggregate(self._stat_agg, session=db_session)
+        if generate_response:
+            result = list(result)
+            if result:
+                new_time = datetime.now()
+                for res in result:
+                    res = self.model(**res, updated_at_ts=new_time).model_dump(by_alias=True)
+                    self._bulk_update.append(InsertOne(res))
+                self.collection.bulk_write(self._bulk_update, session=db_session)
+                self._bulk_update.clear()
+                for res in result:
+                    id_dims = res['_id']
+                    for dim, val in id_dims.items():
+                        id_dims[dim] = str(val)
+            result = {'result': result, "numInserted": len(result), "status": 200,
+                      'model': self.model.__name__, 'isComplete': True}
+        else:
+            new_time = datetime.now()
+            for res in result:
+                res = self.model(**res, updatedAt=new_time).model_dump(by_alias=True)
+                self._bulk_update.append(InsertOne(res))
+            if self._bulk_update:
+                self.collection.bulk_write(self._bulk_update, session=db_session)
+                self._bulk_update.clear()
+        return result
+
+    def remove_stats(self, doc_ids=None, db_session=None):
+        if doc_ids is None:
+            self.collection.delete_many(self._fetch_stat_query, session=db_session)
+        else:
+            if type(doc_ids) is list:
+                self._in_ids['$in'] = doc_ids
+                for query in self._or_queries:
+                    for key in query:
+                        query[key] = self._in_ids
+                self.collection.delete_many(self._or_ids, session=db_session)
+                self._in_ids_op['$in'] = None
+            else:
+                for query in self._or_queries:
+                    for key in query:
+                        query[key] = doc_ids
+                self.collection.delete_many(self._or_ids, session=db_session)
+
+    def invalidate_cache(self, doc_ids=None, db_session=None):
+        if doc_ids is None:
+            self.collection.update_many(self._fetch_stat_query, self._invalidate_cache, session=db_session)
+        else:
+            # invalidate if any value in id_vals is a value in the _id dict
+            if type(doc_ids) is list:
+                self._in_ids['$in'] = doc_ids
+                for query in self._or_queries:
+                    for key in query:
+                        query[key] = self._in_ids
+                self.collection.update_many(self._or_ids, self._invalidate_cache, session=db_session)
+                self._in_ids_op['$in'] = None
+            else:
+                for query in self._or_queries:
+                    for key in query:
+                        query[key] = doc_ids
+                self.collection.update_many(self._or_ids, self._invalidate_cache, session=db_session)
 
 
 class BaseStatsDAO(AbstractStatsDAO):

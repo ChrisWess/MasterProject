@@ -347,18 +347,20 @@ def _import_zipped_dset(project_id, file, bulk_size):
     # TODO: needs to be able to handle the most basic case of image + label + annotation tuple examples,
     #  but also objects (and visual features). The usual case should be a zip file that contains a folder structure
     #  that we define in the parameters.
-    struct_preset = request.args.get('structure', '<labels>/<data>')
-    img_path = request.args.get('imgPath', 'images')
-    img_fsuffix = request.args.get('imgSuffix', '.jpg')
-    anno_path = request.args.get('annoPath', 'text')
-    anno_fsuffix = request.args.get('annoSuffix', '.txt')
-    obj_path = request.args.get('objPath', None)
-    dir_delim = request.args.get('dirdelim', '_')
-    dir_prefix = request.args.get('dirprefix', '<int:3>.')
-    dir_suffix = request.args.get('dirsuffix', None)
-    fname_delim = request.args.get('fdelim', '_')
-    fname_prefix = request.args.get('fprefix', None)
-    fname_suffix = request.args.get('fsuffix', '_<int:6>')  # TODO: make option <len:7> to just remove the last 7 chars
+    args = request.args
+    struct_preset = args.get('structure', '<labels>/<data>')
+    img_path = args.get('imgPath', 'images')
+    img_fsuffix = args.get('imgSuffix', '.jpg')
+    anno_path = args.get('annoPath', 'text')
+    anno_fsuffix = args.get('annoSuffix', '.txt')
+    obj_path = args.get('objPath', None)
+    dir_delim = args.get('dirdelim', '_')
+    dir_prefix = args.get('dirprefix', '<int:3>.')
+    dir_suffix = args.get('dirsuffix', None)
+    fname_delim = args.get('fdelim', '_')
+    fname_prefix = args.get('fprefix', None)
+    fname_suffix = args.get('fsuffix', '_<int:6>')  # TODO: make option <len:7> to just remove the last 7 chars
+    obj_detection = args.get('detect_objects', True)
     # allows input of some categories that describe the type of entities (input comma seperated strings)
     label_categories = request.args['categories']
     label_categories = label_categories.split(',')
@@ -404,7 +406,7 @@ def _import_zipped_dset(project_id, file, bulk_size):
                     annos = [anno.decode('utf-8')[:-1] for anno in annof]
                     with myzip.open(iloc) as imgf:
                         doc = img_dao.add_with_annos(title, full_img_fname, imgf.read(), annos,
-                                                     label['_id'], user_id, project_id, use_bulk)
+                                                     label, user_id, project_id, use_bulk, obj_detection)
                         nums_annos += len(annos)
                         _add_to_batch(doc, new_docs, bulk_size, batch, has_worked, project_id)
     if new_docs or batch:

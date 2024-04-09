@@ -418,8 +418,7 @@ class ImgDocDAO(JoinableDAO):
                     has_unanno_objs = True
         image, thumb, width, height, pil_img = self.process_image_data(image)
         if detect_objs:
-            objs = detect_objects(pil_img)
-            for bbox, cls_name in objs:
+            for bbox, cls_name in detect_objects(pil_img):
                 label_name = 'generic ' + cls_name
                 label_id = LabelDAO().find_or_add(label_name, cls_name, projection='_id')['_id']
                 new_obj = DetectedObject(id=ObjectId(), labelId=label_id, tlx=bbox[0],
@@ -473,16 +472,29 @@ class ImgDocDAO(JoinableDAO):
                                    generate_response=generate_response, db_session=db_session)
 
     # @transaction
-    def add_with_annos(self, name, fname, image, annotations, label_id, user_id, proj_id=None,
-                       as_bulk=False, generate_response=False, db_session=None):
-        # TODO: allow using object detection. Detect only classes that are in categories list of the label with label_id
+    def add_with_annos(self, name, fname, image, annotations, label, user_id, proj_id=None,
+                       as_bulk=False, detect_objs=False, generate_response=False, db_session=None):
         # creates a new document in the docs collection
+        label_id = label['_id']
         image, thumb, width, height, pil_img = self.process_image_data(image)
         has_annos = bool(annotations)
         if has_annos:
             annotations = AnnotationDAO().prepare_annotations(annotations, label_id, user_id, True)
-        objs = [DetectedObject(id=ObjectId(), label_id=label_id, tlx=0, tly=0, brx=width, bry=height,
-                               annotations=annotations, created_by=user_id)]
+        new_id = ObjectId()
+        objs = [None]
+        if detect_objs:
+            # keep only the one BBox with the highest surface area
+            max_bbox_surface = 0
+            for bbox, _ in detect_objects(pil_img, label['categories']):
+                curr_surface = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+                new_obj = DetectedObject(id=new_id, labelId=label_id, tlx=bbox[0], tly=bbox[1], brx=bbox[2],
+                                         bry=bbox[3], annotations=annotations, created_by=user_id)
+                if max_bbox_surface < curr_surface:
+                    max_bbox_surface = curr_surface
+                    objs[0] = new_obj
+        if objs[0] is None:
+            objs[0] = DetectedObject(id=new_id, label_id=label_id, tlx=0, tly=0, brx=width, bry=height,
+                                     annotations=annotations, created_by=user_id)
         doc = ImgDoc(project_id=proj_id, name=name, fname=fname, width=width,
                      height=height, created_by=user_id, objects=objs)
         if as_bulk:

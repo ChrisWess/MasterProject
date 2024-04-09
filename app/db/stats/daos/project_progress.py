@@ -1,9 +1,9 @@
-from app.db.stats.daos.base import SingleDocStatsDAO
+from app.db.stats.daos.base import CategoricalDocStatsDAO
 from app.db.stats.daos.image_prios import PrioStatsDAO
 from app.db.stats.models.project import ProjectProgressStat
 
 
-class ProjectProgressDAO(SingleDocStatsDAO):
+class ProjectProgressDAO(CategoricalDocStatsDAO):
     def __init__(self):
         super().__init__('progress', 'projects', ProjectProgressStat,
                          [

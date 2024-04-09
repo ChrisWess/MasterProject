@@ -27,6 +27,8 @@ const AnnoInspectController: FC = () => {
     const objIdx: number | undefined = useSelector((state: any) => state.object.objIdx);
 
     const selectedConcepts = useMemo(() => {
+        // TODO: From concept selector tab, the concept data is requested by key. Key might refer to a slightly wrong
+        //   concept definition (e.g. "long bird longs", instead of "long bird") => allow to edit the concepts in the list
         return (<List className="selectedConcepts" key="conceptList"
                       sx={{bgcolor: '#252525', p: 0, maxHeight: '430px', overflow: 'auto'}}>
             {annotation?.concepts && conceptRanges && annotation.concepts.map((concept, index) => {

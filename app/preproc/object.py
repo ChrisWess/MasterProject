@@ -1,11 +1,13 @@
 from ultralytics import YOLO
 
 yolo_model = YOLO("app/preproc/yolo_models/yolov8m.pt")
+model_labels = yolo_model.names
+cls_keys = tuple(model_labels.keys())
+cls_vals = tuple(model_labels.values())
 
 
 def detect_objects(img, classes=None):
     # Using PIL image
-    model_labels = yolo_model.names
     if classes is not None:
         if type(classes) is not list:
             classes = list(classes)
@@ -13,7 +15,7 @@ def detect_objects(img, classes=None):
         for cls in classes:
             if type(cls) is str:
                 try:
-                    classes[i] = model_labels.index(cls)
+                    classes[i] = cls_keys[cls_vals.index(cls)]
                 except ValueError:
                     del classes[i]
                     continue

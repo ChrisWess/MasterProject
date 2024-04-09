@@ -772,37 +772,42 @@ class BaseDAO(AbstractDAO):
 
     def insert_docs(self, objs, locs_id=None, update_stats=True, generate_response=True, db_session=None):
         in_helper_list = objs == self._helper_list
-        if self.location:
-            objs, new_ids = self._insert_many_into_list(objs, *locs_id)
-        else:
-            if in_helper_list:
-                for i, obj in enumerate(objs):
-                    self._helper_list[i] = obj.model_dump(exclude_none=True, by_alias=True)
+        try:
+            if self.location:
+                objs, new_ids = self._insert_many_into_list(objs, *locs_id)
             else:
-                for obj in objs:
-                    self._helper_list.append(obj.model_dump(exclude_none=True, by_alias=True))
-            result = self.collection.insert_many(self._helper_list, ordered=False, session=db_session)  # save objects
-            new_ids = result.inserted_ids
-            if self.stat_references and update_stats:
-                from app.db.stats.daos.base import BaseStatsDAO
-                for sdao in self.stat_references:
-                    if issubclass(sdao, BaseStatsDAO):
-                        sdao().invalidate_cache(None, db_session)
-        if generate_response:
-            # TODO: there might be the case when not all objects could be inserted
-            insert_info = [self.model.postprocess_insert_response(insi, id_) for insi, id_ in zip(
-                self._helper_list, new_ids)]
+                if in_helper_list:
+                    for i, obj in enumerate(objs):
+                        self._helper_list[i] = obj.model_dump(exclude_none=True, by_alias=True)
+                else:
+                    for obj in objs:
+                        self._helper_list.append(obj.model_dump(exclude_none=True, by_alias=True))
+                result = self.collection.insert_many(self._helper_list, ordered=False,
+                                                     session=db_session)  # save objects
+                new_ids = result.inserted_ids
+                if self.stat_references and update_stats:
+                    from app.db.stats.daos.base import BaseStatsDAO
+                    for sdao in self.stat_references:
+                        if issubclass(sdao, BaseStatsDAO):
+                            sdao().invalidate_cache(None, db_session)
+            if generate_response:
+                # TODO: there might be the case when not all objects could be inserted
+                insert_info = [self.model.postprocess_insert_response(insi, id_) for insi, id_ in zip(
+                    self._helper_list, new_ids)]
+                self._helper_list.clear()
+                return self.to_response(insert_info, BaseDAO.CREATE, validate=False)
+            elif in_helper_list:
+                for obj, id_ in zip(objs, new_ids):
+                    obj['_id'] = id_
+            else:
+                for i, id_ in enumerate(new_ids):
+                    obj = self._helper_list[i]
+                    obj['_id'] = id_
+                    objs[i] = obj
+                self._helper_list.clear()
+        except Exception as e:
             self._helper_list.clear()
-            return self.to_response(insert_info, BaseDAO.CREATE, validate=False)
-        elif in_helper_list:
-            for obj, id_ in zip(objs, new_ids):
-                obj['_id'] = id_
-        else:
-            for i, id_ in enumerate(new_ids):
-                obj = self._helper_list[i]
-                obj['_id'] = id_
-                objs[i] = obj
-            self._helper_list.clear()
+            raise e
         return objs
 
     def insert(self, obj, *objs, locs_id=None, update_stats=True, generate_response=True, db_session=None):
@@ -815,9 +820,11 @@ class BaseDAO(AbstractDAO):
         return self._grouping_flag or self._agg_pipeline
 
     def does_value_exist(self, field_name, value, db_session=None):
-        self._query_matcher[field_name] = value
-        result = self.collection.count_documents(self._query_matcher, limit=1, session=db_session)
-        self._query_matcher.clear()
+        try:
+            self._query_matcher[field_name] = value
+            result = self.collection.count_documents(self._query_matcher, limit=1, session=db_session)
+        finally:
+            self._query_matcher.clear()
         return bool(result)
 
     def _execute_aggregation(self, query, projection, get_cursor, db_session):
