@@ -3,6 +3,7 @@ from copy import deepcopy
 from datetime import timedelta, datetime
 from functools import wraps
 
+from bson import ObjectId
 from pymongo import UpdateOne, DESCENDING, InsertOne
 
 from app import mdb
@@ -274,12 +275,16 @@ class MultiDimDocStatsDAO(CategoricalDocStatsDAO):
         self.invalidate_after = invalidate_after_sec
         lookups = {}
         for key, dao in id_mapping.items():
-            lookups[key] = {
+            if type(dao) is tuple:
+                as_name, dao = dao
+            else:
+                as_name = key
+            lookups[as_name] = {
                 "$lookup": {
                     "from": dao().collection_name,
                     "localField": "_id." + key,
                     "foreignField": "_id",
-                    "as": key,
+                    "as": as_name,
                 }
             }
         self._lookups = lookups
@@ -298,7 +303,8 @@ class MultiDimDocStatsDAO(CategoricalDocStatsDAO):
         self._agg_pipe = []
 
     def to_response(self, result):
-        id_map = tuple((key, dao_cls()) for key, dao_cls in self.id_mapping.items())
+        id_map = tuple((dao_cls[0], dao_cls[1]()) if type(dao_cls) is tuple else (key, dao_cls())
+                       for key, dao_cls in self.id_mapping.items())
         if isinstance(result, list):
             for res in result:
                 for key, dao in id_map:
@@ -307,7 +313,8 @@ class MultiDimDocStatsDAO(CategoricalDocStatsDAO):
                 if '_id' in res:
                     id_dims = res['_id']
                     for dim, val in id_dims.items():
-                        id_dims[dim] = str(val)
+                        if type(val) is ObjectId:
+                            id_dims[dim] = str(val)
             return {"result": result, "numResults": len(result),
                     "status": 200, 'model': self.model.__name__, 'isComplete': True}
         if '_id' in result:
@@ -316,7 +323,8 @@ class MultiDimDocStatsDAO(CategoricalDocStatsDAO):
                     result[key] = dao.payload_model(**result[key]).to_dict()
             id_dims = result['_id']
             for dim, val in id_dims.items():
-                id_dims[dim] = str(val)
+                if type(val) is ObjectId:
+                    id_dims[dim] = str(val)
         return {"result": result, "numResults": 1, "status": 200,
                 'model': self.model.__name__, 'isComplete': True}
 
@@ -368,6 +376,9 @@ class MultiDimDocStatsDAO(CategoricalDocStatsDAO):
         return self._build_query(sort, limit, skip, expand_dims, projection, generate_response, get_cursor, db_session)
 
     def check_invalid(self, db_session=None):
+        is_coll_filled = self.collection.count_documents(self._fetch_stat_query, limit=1, session=db_session)
+        if not is_coll_filled:
+            return True
         self._time_check['$lt'] = datetime.now() - timedelta(0, self.invalidate_after)
         return bool(self.collection.count_documents(self._validity_check, limit=1, session=db_session))
 

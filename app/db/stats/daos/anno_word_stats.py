@@ -27,7 +27,6 @@ class WordCountOverConceptsDAO(CategoricalDocStatsDAO):
 
 class MostFrequentWordsDAO(CategoricalDocStatsDAO):
     def __init__(self):
-        # TODO: add that multiple fields can act as _id
         super().__init__('frequentwordcount', 'images', AnnotationWordCountStat,
                          [
                              {"$unwind": "$objects"},
@@ -94,7 +93,11 @@ class WordOccurrenceDAO(CategoricalDocStatsDAO):
 
 
 class CorpusTfIdfDAO(MultiDimDocStatsDAO):
+    __slots__ = "_distinct_word_lookup"
+
     def __init__(self):
+        # TODO: there seems to be a problem: isNoun does not really aggregate the data as it should
+        #  (perhaps nounFlag in _id is just ignored => test)
         super().__init__('corpustfidf', 'images', TfIdfStat,
                          [
                              {"$unwind": "$objects"},
@@ -122,6 +125,7 @@ class CorpusTfIdfDAO(MultiDimDocStatsDAO):
                              {"$group": {"_id": {"wordIdx": "$concepts.phraseIdxs", "label": "$objects.labelId",
                                                  "isNoun": "$word.nounFlag"},
                                          "tf": {"$sum": 1}}},
+                             {"$unwind": "$_id.isNoun"},
                              {"$group": {"_id": {"wordIdx": "$_id.wordIdx", "isNoun": "$_id.isNoun"},
                                          "tf": {"$sum": "$tf"},
                                          "docs": {"$addToSet": "$_id.label"}}},
@@ -159,16 +163,28 @@ class CorpusTfIdfDAO(MultiDimDocStatsDAO):
                                      "tfIdf": "$tfidf.tfidf",
                                  }
                              },
-                             {"$unwind": "$_id.isNoun"},
-                         ], {'wordIdx': CorpusDAO, 'label': LabelDAO})  # TODO: make lookup at wordIdx
+                         ], {'wordIdx': ('word', CorpusDAO), 'label': LabelDAO})
+        # make sure only the first lookup result is added to the query result
+        self._distinct_word_lookup = {"nounFlag": False}
+        self._lookups['word']["$lookup"] = {
+            "from": "corpus",
+            "let": {"index": "$_id.wordIdx"},
+            "pipeline": [
+                {"$match": {'$and': [self._distinct_word_lookup, {"$expr": {"$eq": ["$index", "$$index"]}}]}},
+                {"$limit": 1}
+            ],
+            "as": "word"
+        }
 
     def find_top_adjectives_by_label(self, label_id, generate_response=False):
-        return self.find_by_dim_val('label', label_id, sort='tfIdf', limit=15,
-                                    expand_dims='label', generate_response=generate_response)
+        self._distinct_word_lookup['nounFlag'] = False
+        return self.find_dim_stats({'_id.label': label_id, '_id.isNoun': False}, sort='tfIdf', limit=20,
+                                   expand_dims='word', generate_response=generate_response)
 
     def find_top_nouns_by_label(self, label_id, generate_response=False):
-        return self.find_by_dim_val('label', label_id, sort='tfIdf', limit=15,
-                                    expand_dims='label', generate_response=generate_response)
+        self._distinct_word_lookup['nounFlag'] = True
+        return self.find_dim_stats({'_id.label': label_id, '_id.isNoun': True}, sort='tfIdf', limit=20,
+                                   expand_dims='word', generate_response=generate_response)
 
 
 class UngroupedMostFrequentWordsDAO(CategoricalDocStatsDAO):
