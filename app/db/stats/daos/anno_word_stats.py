@@ -96,8 +96,6 @@ class CorpusTfIdfDAO(MultiDimDocStatsDAO):
     __slots__ = "_distinct_word_lookup"
 
     def __init__(self):
-        # TODO: there seems to be a problem: isNoun does not really aggregate the data as it should
-        #  (perhaps nounFlag in _id is just ignored => test)
         super().__init__('corpustfidf', 'images', TfIdfStat,
                          [
                              {"$unwind": "$objects"},
@@ -112,7 +110,11 @@ class CorpusTfIdfDAO(MultiDimDocStatsDAO):
                                  }
                              },
                              {"$unwind": "$concepts"},
-                             {"$unwind": "$concepts.phraseWordIds"},
+                             {"$unwind": {"path": "$concepts.phraseWordIds", "includeArrayIndex": "wIdx1"}},
+                             {"$unwind": {"path": "$concepts.phraseIdxs", "includeArrayIndex": "wIdx2"}},
+                             {"$project": {"_id": 1, "concepts.phraseIdxs": 1, "concepts.phraseWordIds": 1,
+                                           "objects.labelId": 1, "valid": {"$eq": ["$wIdx1", "$wIdx2"]}}},
+                             {"$match": {"valid": True}},
                              {
                                  "$lookup": {
                                      "from": "corpus",
@@ -121,11 +123,10 @@ class CorpusTfIdfDAO(MultiDimDocStatsDAO):
                                      "as": "word"
                                  }
                              },
-                             {"$unwind": "$concepts.phraseIdxs"},
+                             {"$unwind": "$word"},
                              {"$group": {"_id": {"wordIdx": "$concepts.phraseIdxs", "label": "$objects.labelId",
                                                  "isNoun": "$word.nounFlag"},
                                          "tf": {"$sum": 1}}},
-                             {"$unwind": "$_id.isNoun"},
                              {"$group": {"_id": {"wordIdx": "$_id.wordIdx", "isNoun": "$_id.isNoun"},
                                          "tf": {"$sum": "$tf"},
                                          "docs": {"$addToSet": "$_id.label"}}},
@@ -178,12 +179,12 @@ class CorpusTfIdfDAO(MultiDimDocStatsDAO):
 
     def find_top_adjectives_by_label(self, label_id, generate_response=False):
         self._distinct_word_lookup['nounFlag'] = False
-        return self.find_dim_stats({'_id.label': label_id, '_id.isNoun': False}, sort='tfIdf', limit=20,
+        return self.find_dim_stats({'_id.label': label_id, '_id.isNoun': False}, sort='tfIdf', limit=15,
                                    expand_dims='word', generate_response=generate_response)
 
     def find_top_nouns_by_label(self, label_id, generate_response=False):
         self._distinct_word_lookup['nounFlag'] = True
-        return self.find_dim_stats({'_id.label': label_id, '_id.isNoun': True}, sort='tfIdf', limit=20,
+        return self.find_dim_stats({'_id.label': label_id, '_id.isNoun': True}, sort='tfIdf', limit=15,
                                    expand_dims='word', generate_response=generate_response)
 
 
