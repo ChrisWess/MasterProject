@@ -49,9 +49,11 @@ class UserDAO(BaseDAO):
         # Validates a user login. Returns user record or None
         # Get Fields Username & Password
         # Client Side Login & Validation handled by wtforms in register class
-        query = self.add_query("email", email)
-        user = self.collection.find_one(query)
-        self._query_matcher.clear()
+        try:
+            query = self.add_query("email", email)
+            user = self.collection.find_one(query)
+        finally:
+            self._query_matcher.clear()
         if user is not None:
             user = self.model(**user)
             if user.check_password(usr_entered):

@@ -276,6 +276,28 @@ class AnnotationDAO(JoinableDAO):
         anno = self.prepare_annotation(anno_text, label_id, with_concepts=True, db_session=db_session)
         return self.to_response(anno) if generate_response else anno
 
+    def _handle_subject_adjs(self, subj_concepts, concept_ids, mask, annotation, cidx):
+        # TODO: could use "and" instead of the last comma of the enumeration
+        for i, concept in enumerate(subj_concepts, start=1):
+            del self._field_check[concept['key']]
+            adjs = concept['phraseWords'][:-concept['nounCount']]
+            for j, adj in enumerate(adjs, start=1):
+                self._helper_list.append(adj)
+                annotation += adj
+                if j < len(adjs):
+                    annotation += ', '
+                    self._helper_list.append(',')
+            concept_ids.append(concept['_id'])
+            mask.extend((cidx,) * (2 * len(adjs) - 1))
+            if i < len(subj_concepts):
+                self._helper_list.append(',')
+                annotation += ', '
+                mask.append(-1)
+            else:
+                annotation += ' '
+            cidx += 1
+        return annotation, cidx
+
     def from_concepts(self, concept_word_idx_lists, main_category, user_id, generate_response=False, db_session=None):
         # concept_word_idx_lists list is reused as datastructure in this method
         idx = 0
@@ -312,80 +334,72 @@ class AnnotationDAO(JoinableDAO):
         # TODO: the annotation would also be a little more readable, if we identify if the root noun of a concept
         #  is singular. If it is singular, then prefix the concept with the word "a" (e.g. a long beak).
         #  Maybe add new field to CorpusWord "singularFlag" that is null for adjectives and bool for nouns?
-        if subj_concepts:
-            self._helper_list.append('this')
-            annotation = 'this '
-            mask, concept_ids = [-1], []
-            for i, concept in enumerate(subj_concepts, start=1):
-                del self._field_check[concept['key']]
-                adjs = concept['phraseWords'][:-concept['nounCount']]
-                for j, adj in enumerate(adjs, start=1):
-                    self._helper_list.append(adj)
-                    annotation += adj
-                    if j < len(adjs):
-                        annotation += comma + wspace
-                        self._helper_list.append(comma)
-                concept_ids.append(concept['_id'])
-                mask.extend((cidx,) * (2 * len(adjs) - 1))
-                if i < len(subj_concepts):
-                    self._helper_list.append(comma)
-                    annotation += comma + wspace
-                    mask.append(-1)
-                else:
-                    annotation += wspace
-                cidx += 1
-            annotation += main_category + ' has'
-            self._helper_list.append(main_category)
-            self._helper_list.append('has')
-            mask.append(-1)
-            mask.append(-1)
-        else:
-            self._helper_list.extend(('this', main_category, 'has'))
-            annotation = wspace.join(self._helper_list)
-            mask, concept_ids = [-1] * 3, []
-        for con in concepts:
-            del self._field_check[con['key']]
-            concept_ids.append(con['_id'])
-            phrase = con['phraseWords']
-            self._helper_list.extend(phrase)
-            annotation += wspace + wspace.join(phrase)
-            mask.extend((cidx,) * len(phrase))
-            if len(self._field_check) >= 2:
-                enum_tok = ','
-                annotation += enum_tok
-                self._helper_list.append(enum_tok)
+        if len(self._field_check) > len(subj_concepts):
+            if subj_concepts:
+                self._helper_list.append('this')
+                annotation = 'this '
+                mask, concept_ids = [-1], []
+                annotation, cidx = self._handle_subject_adjs(subj_concepts, concept_ids, mask, annotation, cidx)
+                annotation += main_category + ' has'
+                self._helper_list.append(main_category)
+                self._helper_list.append('has')
                 mask.append(-1)
-            elif len(self._field_check) == 1:
-                enum_tok = 'and'
-                annotation += wspace + enum_tok
-                self._helper_list.append(enum_tok)
                 mask.append(-1)
-            cidx += 1
-        if self._field_check:
-            concept_word_idx_lists.clear()
-            for key in self._field_check:
-                concept_word_idx_lists.append(key)
-            concept_word_idx_lists = concept_dao.add_from_keys(concept_word_idx_lists, db_session=db_session)
-            last_split_pos = len(concept_word_idx_lists) - 2
-            for i, con in enumerate(concept_word_idx_lists):
+            else:
+                self._helper_list.extend(('this', main_category, 'has'))
+                annotation = wspace.join(self._helper_list)
+                mask, concept_ids = [-1] * 3, []
+            for con in concepts:
+                del self._field_check[con['key']]
                 concept_ids.append(con['_id'])
                 phrase = con['phraseWords']
                 self._helper_list.extend(phrase)
                 annotation += wspace + wspace.join(phrase)
                 mask.extend((cidx,) * len(phrase))
-                if i < last_split_pos:
-                    enum_tok = comma
+                if len(self._field_check) >= 2:
+                    enum_tok = ','
                     annotation += enum_tok
                     self._helper_list.append(enum_tok)
                     mask.append(-1)
-                elif i == last_split_pos:
+                elif len(self._field_check) == 1:
                     enum_tok = 'and'
                     annotation += wspace + enum_tok
                     self._helper_list.append(enum_tok)
                     mask.append(-1)
-                concepts.append(con)
                 cidx += 1
+            if self._field_check:
+                concept_word_idx_lists.clear()
+                for key in self._field_check:
+                    concept_word_idx_lists.append(key)
+                concept_word_idx_lists = concept_dao.add_from_keys(concept_word_idx_lists, db_session=db_session)
+                last_split_pos = len(concept_word_idx_lists) - 2
+                for i, con in enumerate(concept_word_idx_lists):
+                    concept_ids.append(con['_id'])
+                    phrase = con['phraseWords']
+                    self._helper_list.extend(phrase)
+                    annotation += wspace + wspace.join(phrase)
+                    mask.extend((cidx,) * len(phrase))
+                    if i < last_split_pos:
+                        enum_tok = comma
+                        annotation += enum_tok
+                        self._helper_list.append(enum_tok)
+                        mask.append(-1)
+                    elif i == last_split_pos:
+                        enum_tok = 'and'
+                        annotation += wspace + enum_tok
+                        self._helper_list.append(enum_tok)
+                        mask.append(-1)
+                    concepts.append(con)
+                    cidx += 1
+                self._field_check.clear()
+        else:
+            self._helper_list.extend(('this', 'is', 'a'))
+            annotation = 'this is a '
+            mask, concept_ids = [-1, -1, -1], []
+            annotation, cidx = self._handle_subject_adjs(subj_concepts, concept_ids, mask, annotation, cidx)
             self._field_check.clear()
+            annotation += main_category
+            self._helper_list.append(main_category)
         self._helper_list.append('.')
         annotation += '.'
         mask.append(-1)

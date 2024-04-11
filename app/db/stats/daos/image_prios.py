@@ -42,11 +42,13 @@ class PrioStatsDAO(CategoricalDocStatsDAO):
         self._prio_query = {'_id': self._in_ids, 'prio': {'$ne': 0.0}}
 
     def find_prio_imgs(self, ids, tuples_list, db_session=None):
-        self._in_ids['$in'] = ids
-        self._projection_dict["prio"] = 1
-        result = self.collection.find(self._prio_query, self._projection_dict, session=db_session)
-        for doc in result:
-            tuples_list.append((doc['_id'], doc['prio']))
-        del self._projection_dict['prio']
-        self._in_ids['$in'] = None
+        try:
+            self._in_ids['$in'] = ids
+            self._projection_dict["prio"] = 1
+            result = self.collection.find(self._prio_query, self._projection_dict, session=db_session)
+            for doc in result:
+                tuples_list.append((doc['_id'], doc['prio']))
+        finally:
+            del self._projection_dict['prio']
+            self._in_ids['$in'] = None
         return tuples_list

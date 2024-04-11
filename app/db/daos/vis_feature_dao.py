@@ -48,26 +48,30 @@ class VisualFeatureDAO(JoinableDAO):
         return self.simple_match('annotationId', anno_id, projection, generate_response, db_session)
 
     def find_by_annotations(self, anno_ids, projection=None, generate_response=False, db_session=None):
-        self._in_query['$in'] = anno_ids
-        self._query_matcher["annotationId"] = self._in_query
-        projection = self.build_projection(projection)
-        result = self.collection.find(self._query_matcher, projection, session=db_session)
-        result = list(self._apply_sort_limit(result))
-        self._in_query.clear()
-        self._query_matcher.clear()
-        if projection:
-            projection.clear()
+        try:
+            self._in_query['$in'] = anno_ids
+            self._query_matcher["annotationId"] = self._in_query
+            projection = self.build_projection(projection)
+            result = self.collection.find(self._query_matcher, projection, session=db_session)
+            result = list(self._apply_sort_limit(result))
+        finally:
+            self._in_query.clear()
+            self._query_matcher.clear()
+            if projection:
+                projection.clear()
         return self.to_response(result) if generate_response else result
 
     def find_by_annotation_concept(self, anno_id, concept_id, projection=None,
                                    generate_response=False, db_session=None):
-        projection = self.build_projection(projection)
-        self._query_matcher['annotationId'] = anno_id
-        self._query_matcher['conceptId'] = concept_id
-        result = self.collection.find_one(self._query_matcher, projection, session=db_session)
-        self._query_matcher.clear()
-        if projection:
-            projection.clear()
+        try:
+            projection = self.build_projection(projection)
+            self._query_matcher['annotationId'] = anno_id
+            self._query_matcher['conceptId'] = concept_id
+            result = self.collection.find_one(self._query_matcher, projection, session=db_session)
+        finally:
+            self._query_matcher.clear()
+            if projection:
+                projection.clear()
         return self.to_response(result) if generate_response and result is not None else result
 
     def find_by_object(self, obj_id, projection=None, generate_response=False, db_session=None, get_cursor=False):
@@ -106,16 +110,20 @@ class VisualFeatureDAO(JoinableDAO):
     def add_many(self, obj_ids, anno_ids, concept_ids, bboxs, parent_bboxs=None,
                  generate_response=False, db_session=None):
         user_id = UserDAO().get_current_user_id()
-        if isinstance(anno_ids, ObjectId):
-            self._collect_features(obj_ids, anno_ids, concept_ids, bboxs, user_id, parent_bboxs, db_session)
-        else:
-            if parent_bboxs is None:
-                for oid, aid, cids, bbs in zip(obj_ids, anno_ids, concept_ids, bboxs):
-                    self._collect_features(oid, aid, cids, bbs, user_id, parent_bboxs, db_session)
+        try:
+            if isinstance(anno_ids, ObjectId):
+                self._collect_features(obj_ids, anno_ids, concept_ids, bboxs, user_id, parent_bboxs, db_session)
             else:
-                for i, (oid, aid, cids, bbs) in enumerate(zip(obj_ids, anno_ids, concept_ids, bboxs)):
-                    self._collect_features(oid, aid, cids, bbs, user_id, parent_bboxs[i], db_session)
-        response = self.insert_docs(self._helper_list, generate_response=generate_response, db_session=db_session)
+                if parent_bboxs is None:
+                    for oid, aid, cids, bbs in zip(obj_ids, anno_ids, concept_ids, bboxs):
+                        self._collect_features(oid, aid, cids, bbs, user_id, parent_bboxs, db_session)
+                else:
+                    for i, (oid, aid, cids, bbs) in enumerate(zip(obj_ids, anno_ids, concept_ids, bboxs)):
+                        self._collect_features(oid, aid, cids, bbs, user_id, parent_bboxs[i], db_session)
+            response = self.insert_docs(self._helper_list, generate_response=generate_response, db_session=db_session)
+        except Exception as e:
+            self._helper_list.clear()
+            raise e
         if not generate_response:
             self._helper_list.clear()
         return response
@@ -124,26 +132,30 @@ class VisualFeatureDAO(JoinableDAO):
         for i, bbox in enumerate(bboxs):
             if isinstance(bbox, (list, tuple)):
                 bboxs[i] = BoundingBox(tlx=bbox[0], tly=bbox[1], brx=bbox[2], bry=bbox[3]).to_dict()
-        self._set_field_op['updatedAt'] = datetime.now()
-        self._update_commands['$set'] = self._set_field_op
-        result = self.array_push_many('bboxs', bboxs, ('_id', feat_id), False, db_session)
-        del self._set_field_op['updatedAt']
+        try:
+            self._set_field_op['updatedAt'] = datetime.now()
+            self._update_commands['$set'] = self._set_field_op
+            result = self.array_push_many('bboxs', bboxs, ('_id', feat_id), False, db_session)
+        finally:
+            del self._set_field_op['updatedAt']
         return self.to_response(result, BaseDAO.UPDATE) if generate_response else result
 
     def reposition_bboxs_of_object(self, object_id, delta_x, delta_y, generate_response=False, db_session=None):
-        self._query_matcher['objectId'] = object_id
-        self._set_field_op['updatedAt'] = datetime.now()
-        self._update_commands['$set'] = self._set_field_op
-        sub_x = -delta_x
-        sub_y = -delta_y
-        self._increment_op['bboxs.$[].tlx'] = sub_x
-        self._increment_op['bboxs.$[].tly'] = sub_y
-        self._increment_op['bboxs.$[].brx'] = sub_x
-        self._increment_op['bboxs.$[].bry'] = sub_y
-        self._update_commands['$inc'] = self._increment_op
-        result = self.collection.update_many(self._query_matcher, self._update_commands, session=db_session)
-        del self._set_field_op['updatedAt']
-        self._increment_op.clear()
-        self._update_commands.clear()
-        self._query_matcher.clear()
+        try:
+            self._query_matcher['objectId'] = object_id
+            self._set_field_op['updatedAt'] = datetime.now()
+            self._update_commands['$set'] = self._set_field_op
+            sub_x = -delta_x
+            sub_y = -delta_y
+            self._increment_op['bboxs.$[].tlx'] = sub_x
+            self._increment_op['bboxs.$[].tly'] = sub_y
+            self._increment_op['bboxs.$[].brx'] = sub_x
+            self._increment_op['bboxs.$[].bry'] = sub_y
+            self._update_commands['$inc'] = self._increment_op
+            result = self.collection.update_many(self._query_matcher, self._update_commands, session=db_session)
+        finally:
+            del self._set_field_op['updatedAt']
+            self._increment_op.clear()
+            self._update_commands.clear()
+            self._query_matcher.clear()
         return self.to_response(result, BaseDAO.UPDATE) if generate_response else result

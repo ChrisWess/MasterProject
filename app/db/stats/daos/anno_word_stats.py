@@ -177,15 +177,15 @@ class CorpusTfIdfDAO(MultiDimDocStatsDAO):
             "as": "word"
         }
 
-    def find_top_adjectives_by_label(self, label_id, generate_response=False):
+    def find_top_adjectives_by_label(self, label_id, top_n=15, generate_response=False):
         self._distinct_word_lookup['nounFlag'] = False
-        return self.find_dim_stats({'_id.label': label_id, '_id.isNoun': False}, sort='tfIdf', limit=15,
-                                   expand_dims='word', generate_response=generate_response)
+        return self.find_dim_stats({'_id.label': label_id, '_id.isNoun': False}, sort='tfIdf',
+                                   limit=top_n, expand_dims='word', generate_response=generate_response)
 
-    def find_top_nouns_by_label(self, label_id, generate_response=False):
+    def find_top_nouns_by_label(self, label_id, top_n=15, generate_response=False):
         self._distinct_word_lookup['nounFlag'] = True
-        return self.find_dim_stats({'_id.label': label_id, '_id.isNoun': True}, sort='tfIdf', limit=15,
-                                   expand_dims='word', generate_response=generate_response)
+        return self.find_dim_stats({'_id.label': label_id, '_id.isNoun': True}, sort='tfIdf',
+                                   limit=top_n, expand_dims='word', generate_response=generate_response)
 
 
 class UngroupedMostFrequentWordsDAO(CategoricalDocStatsDAO):

@@ -93,9 +93,6 @@ class BaseDAO(AbstractDAO):
         super().__init__(collection)
         # TODO: make a method that checks each DB collection for data consistency! Make this method an optional
         #  server starting configuration that should be enabled when a server crash occurred.
-        # TODO: wrap all methods in try-finally, because it is essential that queries are cleared
-        # TODO: All methods where get_cursor=True must copy its projection_dict and sort info, if they are used
-        #  (also in StatsDAO). Check if any other operation attr would cause unexpected results in this case.
         self.model = model
         self.payload_model = payload_model
         self._example_model = self._key_set = self.references = self._extended_schema = None
@@ -709,13 +706,16 @@ class BaseDAO(AbstractDAO):
 
     def _insert_into_list(self, obj, *locs_id, db_session=None):
         insert_info = obj.model_dump(exclude_none=True, by_alias=True)
-        self._query_matcher[self._parent_prefix + '_id'] = locs_id[-1]
-        self._push_op[self._push_loc] = insert_info
-        self._update_commands['$push'] = self._push_op
-        result = self.collection.update_one(self._query_matcher, self._update_commands, upsert=True, session=db_session)
-        self._push_op.clear()
-        self._update_commands.clear()
-        self._query_matcher.clear()
+        try:
+            self._query_matcher[self._parent_prefix + '_id'] = locs_id[-1]
+            self._push_op[self._push_loc] = insert_info
+            self._update_commands['$push'] = self._push_op
+            result = self.collection.update_one(self._query_matcher, self._update_commands, upsert=True,
+                                                session=db_session)
+        finally:
+            self._push_op.clear()
+            self._update_commands.clear()
+            self._query_matcher.clear()
         new_id = insert_info['_id']
         if self.stat_references:
             for ids, refs in zip((*locs_id, new_id), self.stat_references):
@@ -747,21 +747,24 @@ class BaseDAO(AbstractDAO):
             return obj, insert_info
 
     def _insert_many_into_list(self, objs, *locs_id, db_session=None):
-        if objs == self._helper_list:
-            for i, obj in enumerate(objs):
-                self._helper_list[i] = obj.model_dump(exclude_none=True, by_alias=True)
-        else:
-            for obj in objs:
-                self._helper_list.append(obj.model_dump(exclude_none=True, by_alias=True))
-        self._query_matcher[self._parent_prefix + '_id'] = locs_id[-1]
-        self._push_each['$each'] = self._helper_list
-        self._push_op[self._push_loc] = self._push_each
-        self._update_commands['$push'] = self._push_op
-        result = self.collection.update_one(self._query_matcher, self._update_commands, upsert=True, session=db_session)
-        self._push_op.clear()
-        self._push_each.clear()
-        self._update_commands.clear()
-        self._query_matcher.clear()
+        try:
+            if objs == self._helper_list:
+                for i, obj in enumerate(objs):
+                    self._helper_list[i] = obj.model_dump(exclude_none=True, by_alias=True)
+            else:
+                for obj in objs:
+                    self._helper_list.append(obj.model_dump(exclude_none=True, by_alias=True))
+            self._query_matcher[self._parent_prefix + '_id'] = locs_id[-1]
+            self._push_each['$each'] = self._helper_list
+            self._push_op[self._push_loc] = self._push_each
+            self._update_commands['$push'] = self._push_op
+            result = self.collection.update_one(self._query_matcher, self._update_commands,
+                                                upsert=True, session=db_session)
+        finally:
+            self._push_op.clear()
+            self._push_each.clear()
+            self._update_commands.clear()
+            self._query_matcher.clear()
         new_ids = [doc['_id'] for doc in self._helper_list]
         if self.stat_references:
             for ids, refs in zip((*locs_id, new_ids), self.stat_references):
@@ -828,39 +831,41 @@ class BaseDAO(AbstractDAO):
         return bool(result)
 
     def _execute_aggregation(self, query, projection, get_cursor, db_session):
-        if query:
-            self._match_agg_clause['$match'] = query
-            self._agg_pipeline.insert(0, self._match_agg_clause)
-        if self._apply_search_flag:
-            # TODO: text search in aggregations possible?
-            self._agg_pipeline.append(self._text_search)
-        if self._group_by_agg:
-            self._agg_pipeline.append(self._agg_group)
-        projection = self.build_projection(projection)
-        if projection:
-            self._agg_pipeline.append(self._agg_projection)
-        if self._sort_list:
-            self._agg_sorter.clear()
-            self._agg_sorter.update(self._sort_list)
-            self._agg_pipeline.append(self._agg_sort)
-        if self._skip_results:
-            self._agg_pipeline.append(self._skip_agg)
-        if self._limit_results:
-            self._agg_pipeline.append(self._limit_agg)
-        # print("Executing aggregation:", cls._agg_pipeline)
-        if get_cursor:
-            result = self.collection.aggregate(deepcopy(self._agg_pipeline), session=db_session)
-        else:
-            result = self.collection.aggregate(self._agg_pipeline, session=db_session)
-            if not self._is_unwound and self.location:
-                res = []
-                for doc in result:
-                    res += self._nested_get(doc)
-                result = res
-                self._helper_list.clear()
+        try:
+            if query:
+                self._match_agg_clause['$match'] = query
+                self._agg_pipeline.insert(0, self._match_agg_clause)
+            if self._apply_search_flag:
+                # TODO: text search in aggregations possible?
+                self._agg_pipeline.append(self._text_search)
+            if self._group_by_agg:
+                self._agg_pipeline.append(self._agg_group)
+            projection = self.build_projection(projection)
+            if projection:
+                self._agg_pipeline.append(self._agg_projection)
+            if self._sort_list:
+                self._agg_sorter.clear()
+                self._agg_sorter.update(self._sort_list)
+                self._agg_pipeline.append(self._agg_sort)
+            if self._skip_results:
+                self._agg_pipeline.append(self._skip_agg)
+            if self._limit_results:
+                self._agg_pipeline.append(self._limit_agg)
+            # print("Executing aggregation:", cls._agg_pipeline)
+            if get_cursor:
+                result = self.collection.aggregate(deepcopy(self._agg_pipeline), session=db_session)
             else:
-                result = list(result)
-        self._agg_pipeline.clear()
+                result = self.collection.aggregate(self._agg_pipeline, session=db_session)
+                if not self._is_unwound and self.location:
+                    res = []
+                    for doc in result:
+                        res += self._nested_get(doc)
+                    result = res
+                    self._helper_list.clear()
+                else:
+                    result = list(result)
+        finally:
+            self._agg_pipeline.clear()
         return result, projection
 
     def find(self, find_many=True, projection=None, custom_query=None, get_cursor=False, db_session=None):
@@ -869,40 +874,45 @@ class BaseDAO(AbstractDAO):
         Otherwise, this simply executes the query from custom_query.
         """
         query = self._query_matcher if custom_query is None else custom_query
-        if self._do_aggregate():
-            # joins should already be in the aggregation pipeline
-            result, projection = self._execute_aggregation(query, projection, get_cursor, db_session)
-        else:
-            # print("Executing query:", query)
-            projection = self.build_projection(projection)
-            if find_many:
-                if self._apply_search_flag:
-                    query['$text'] = self._search_instructions
-                if get_cursor:
-                    query = deepcopy(query)
-                    projection_copy = deepcopy(projection) if projection else projection
-                    result = self.collection.find(query, projection_copy, session=db_session)
-                    result = self._apply_sort_limit(result, True)
-                else:
-                    result = self.collection.find(query, projection, session=db_session)
-                    if not self._is_unwound and self.location:
-                        res = []
-                        for doc in self._apply_sort_limit(result):
-                            res += self._nested_get(doc)
-                        result = res
-                        self._helper_list.clear()
-                    else:
-                        result = list(self._apply_sort_limit(result))
+        try:
+            if self._do_aggregate():
+                # joins should already be in the aggregation pipeline
+                result, projection = self._execute_aggregation(query, projection, get_cursor, db_session)
             else:
-                sorting = self._sort_list if self._sort_list else None
-                result = self.collection.find_one(query, projection, sort=sorting, session=db_session)
-                if not self._is_unwound and self.location:
-                    result = self._nested_get(result).copy()
-                    self._helper_list.clear()
-        if projection:
-            projection.clear()
-        self._is_unwound = False
-        self.clear_query()
+                # print("Executing query:", query)
+                projection = self.build_projection(projection)
+                if find_many:
+                    if self._apply_search_flag:
+                        query['$text'] = self._search_instructions
+                    if get_cursor:
+                        query = deepcopy(query)
+                        projection_copy = deepcopy(projection) if projection else projection
+                        result = self.collection.find(query, projection_copy, session=db_session)
+                        result = self._apply_sort_limit(result, True)
+                    else:
+                        result = self.collection.find(query, projection, session=db_session)
+                        if not self._is_unwound and self.location:
+                            res = []
+                            for doc in self._apply_sort_limit(result):
+                                res += self._nested_get(doc)
+                            result = res
+                            self._helper_list.clear()
+                        else:
+                            result = list(self._apply_sort_limit(result))
+                else:
+                    sorting = self._sort_list if self._sort_list else None
+                    result = self.collection.find_one(query, projection, sort=sorting, session=db_session)
+                    if not self._is_unwound and self.location:
+                        result = self._nested_get(result).copy()
+                        self._helper_list.clear()
+        except Exception as e:
+            self._helper_list.clear()
+            raise e
+        finally:
+            if projection:
+                projection.clear()
+            self._is_unwound = False
+            self.clear_query()
         return result
 
     def find_all(self, projection=None, generate_response=False, get_cursor=False, db_session=None):
@@ -914,24 +924,29 @@ class BaseDAO(AbstractDAO):
         :param db_session:
         :return: List of all DB entity model objects
         """
-        projection = self.build_projection(projection)
-        if get_cursor:
-            projection_copy = deepcopy(projection) if projection else projection
-            result = self.collection.find(self._query_matcher, projection_copy, session=db_session)
-            result = self._apply_sort_limit(result, True)
-        elif self.location:
-            result = self.collection.find(self._query_matcher, projection, session=db_session)
-            res = []
-            for doc in self._apply_sort_limit(result):
-                res += self._nested_get(doc)
-            result = res
+        try:
+            projection = self.build_projection(projection)
+            if get_cursor:
+                projection_copy = deepcopy(projection) if projection else projection
+                result = self.collection.find(self._query_matcher, projection_copy, session=db_session)
+                result = self._apply_sort_limit(result, True)
+            elif self.location:
+                result = self.collection.find(self._query_matcher, projection, session=db_session)
+                res = []
+                for doc in self._apply_sort_limit(result):
+                    res += self._nested_get(doc)
+                result = res
+                self._helper_list.clear()
+            else:
+                result = self.collection.find(session=db_session)
+                result = list(self._apply_sort_limit(result))
+        except Exception as e:
             self._helper_list.clear()
-        else:
-            result = self.collection.find(session=db_session)
-            result = list(self._apply_sort_limit(result))
-        self.clear_query_augmentation()  # TODO: check if I need this in other queries
-        if projection:
-            projection.clear()
+            raise e
+        finally:
+            self.clear_query_augmentation()  # TODO: check if I need this in other queries
+            if projection:
+                projection.clear()
         return self.to_response(result) if generate_response else result
 
     def find_many(self, ids, projection=None, generate_response=False, get_cursor=False, db_session=None):
@@ -944,42 +959,47 @@ class BaseDAO(AbstractDAO):
         :param ids: Ids of DB entities to find
         :return: List of DB entity model objects that match the provided IDs
         """
-        if type(ids) is not list:
-            if self._nested_path:
-                ids = list(ids)
-            else:
-                for i in ids:
-                    self._helper_list.append(i)
-                ids = self._helper_list
-        self._in_query['$in'] = ids
-        self._query_matcher["_id"] = self._in_query
-        if get_cursor:
-            projection = self.build_projection(projection)
-            projection_copy = deepcopy(projection) if projection else projection
-            result = self.collection.find(deepcopy(self._query_matcher), projection_copy, session=db_session)
-            result = self._apply_sort_limit(result, True)
-        elif self.location:
-            projection = self.build_projection(projection)
-            result = self.collection.find(self._query_matcher, projection, session=db_session)
-            res = []
-            for doc in self._apply_sort_limit(result):
-                res += self._nested_get(doc)
-            result = res
-            if ids == self._helper_list:
-                self._helper_list.clear()
-        else:
-            if projection:
+        try:
+            if type(ids) is not list:
+                if self._nested_path:
+                    ids = list(ids)
+                else:
+                    for i in ids:
+                        self._helper_list.append(i)
+                    ids = self._helper_list
+            self._in_query['$in'] = ids
+            self._query_matcher["_id"] = self._in_query
+            if get_cursor:
+                projection = self.build_projection(projection)
+                projection_copy = deepcopy(projection) if projection else projection
+                result = self.collection.find(deepcopy(self._query_matcher), projection_copy, session=db_session)
+                result = self._apply_sort_limit(result, True)
+            elif self.location:
                 projection = self.build_projection(projection)
                 result = self.collection.find(self._query_matcher, projection, session=db_session)
+                res = []
+                for doc in self._apply_sort_limit(result):
+                    res += self._nested_get(doc)
+                result = res
+                if ids == self._helper_list:
+                    self._helper_list.clear()
             else:
-                result = self.collection.find(self._query_matcher, session=db_session)
-            result = list(self._apply_sort_limit(result))
-            if ids == self._helper_list:
-                self._helper_list.clear()
-        self._in_query.clear()
-        self._query_matcher.clear()
-        if projection:
-            projection.clear()
+                if projection:
+                    projection = self.build_projection(projection)
+                    result = self.collection.find(self._query_matcher, projection, session=db_session)
+                else:
+                    result = self.collection.find(self._query_matcher, session=db_session)
+                result = list(self._apply_sort_limit(result))
+                if ids == self._helper_list:
+                    self._helper_list.clear()
+        except Exception as e:
+            self._helper_list.clear()
+            raise e
+        finally:
+            self._in_query.clear()
+            self._query_matcher.clear()
+            if projection:
+                projection.clear()
         return self.to_response(result) if generate_response else result
 
     def find_many_retain_order(self, ids, custom_sort=None, projection=None, generate_response=False,
@@ -995,46 +1015,53 @@ class BaseDAO(AbstractDAO):
         :return: List of DB entity model objects that match the provided IDs
         """
         if custom_sort:
-            if type(custom_sort[0]) is tuple:
-                for field, order in custom_sort:
-                    self.sort_by(field, order)
-            elif type(custom_sort) is str:
-                self.sort_by(custom_sort)
-            else:
-                self.sort_by(*custom_sort)
-            result = self.find_many(ids, projection, False, get_cursor, db_session)
-            self._sort_list.clear()
+            try:
+                if type(custom_sort[0]) is tuple:
+                    for field, order in custom_sort:
+                        self.sort_by(field, order)
+                elif type(custom_sort) is str:
+                    self.sort_by(custom_sort)
+                else:
+                    self.sort_by(*custom_sort)
+                result = self.find_many(ids, projection, False, get_cursor, db_session)
+            finally:
+                self._sort_list.clear()
         else:
             # Retain the original order without any additional sorting input from the user
             # TODO: adjust this for usage on nested docs
-            if type(ids) is not list:
-                for i in ids:
-                    self._helper_list.append(i)
-                ids = self._helper_list
-            self._agg_sorter['__order'] = 1
-            self._in_query['$in'] = ids
-            self._query_matcher["_id"] = self._in_query
-            self._match_agg_clause['$match'] = self._query_matcher
-            self._agg_pipeline.append(self._match_agg_clause)
-            self._agg_pipeline.append({'$addFields': {"__order": {'$indexOfArray': [ids, "$_id"]}}})
-            self._agg_pipeline.append(self._agg_sort)
             has_projection = bool(projection)
-            if has_projection:
-                self.build_projection(projection)
-                self._agg_pipeline.append(self._agg_projection)
-            if get_cursor:
-                result = self.collection.aggregate(deepcopy(self._agg_pipeline), session=db_session)
-            else:
-                result = list(self.collection.aggregate(self._agg_pipeline, session=db_session))
-            if ids == self._helper_list:
+            try:
+                if type(ids) is not list:
+                    for i in ids:
+                        self._helper_list.append(i)
+                    ids = self._helper_list
+                self._agg_sorter['__order'] = 1
+                self._in_query['$in'] = ids
+                self._query_matcher["_id"] = self._in_query
+                self._match_agg_clause['$match'] = self._query_matcher
+                self._agg_pipeline.append(self._match_agg_clause)
+                self._agg_pipeline.append({'$addFields': {"__order": {'$indexOfArray': [ids, "$_id"]}}})
+                self._agg_pipeline.append(self._agg_sort)
+                if has_projection:
+                    self.build_projection(projection)
+                    self._agg_pipeline.append(self._agg_projection)
+                if get_cursor:
+                    result = self.collection.aggregate(deepcopy(self._agg_pipeline), session=db_session)
+                else:
+                    result = list(self.collection.aggregate(self._agg_pipeline, session=db_session))
+                if ids == self._helper_list:
+                    self._helper_list.clear()
+            except Exception as e:
                 self._helper_list.clear()
-            if has_projection:
-                self._projection_dict.clear()
-            self._agg_pipeline.clear()
-            self._match_agg_clause['$match'] = None
-            self._query_matcher.clear()
-            self._in_query.clear()
-            self._agg_sorter.clear()
+                raise e
+            finally:
+                if has_projection:
+                    self._projection_dict.clear()
+                self._agg_pipeline.clear()
+                self._match_agg_clause['$match'] = None
+                self._query_matcher.clear()
+                self._in_query.clear()
+                self._agg_sorter.clear()
         return self.to_response(result) if generate_response else result
 
     def find_by_id(self, entity_id, projection=None, generate_response=False, db_session=None):
@@ -1046,18 +1073,23 @@ class BaseDAO(AbstractDAO):
         :param entity_id: Id of DB entity to find
         :return: DB entity model object if found, None otherwise
         """
-        self._query_matcher["_id"] = entity_id
-        if projection or self.location:
-            projection = self.build_projection(projection)
-            result = self.collection.find_one(self._query_matcher, projection, session=db_session)
-        else:
-            result = self.collection.find_one(self._query_matcher, session=db_session)
-        if result and self.location:
-            result = self._nested_get(result).copy()
+        try:
+            self._query_matcher["_id"] = entity_id
+            if projection or self.location:
+                projection = self.build_projection(projection)
+                result = self.collection.find_one(self._query_matcher, projection, session=db_session)
+            else:
+                result = self.collection.find_one(self._query_matcher, session=db_session)
+            if result and self.location:
+                result = self._nested_get(result).copy()
+                self._helper_list.clear()
+        except Exception as e:
             self._helper_list.clear()
-        self._query_matcher.clear()
-        if projection:
-            projection.clear()
+            raise e
+        finally:
+            self._query_matcher.clear()
+            if projection:
+                projection.clear()
         return self.to_response(result) if generate_response and result is not None else result
 
     def simple_match(self, key, value, projection_includes=None, generate_response=False,
@@ -1065,43 +1097,45 @@ class BaseDAO(AbstractDAO):
         key = self._loc_prefix + key
         self._query_matcher[key] = value
         has_projection = bool(projection_includes)
-        if has_projection:
-            if isinstance(projection_includes, str):
-                self._projection_dict[self._loc_prefix + projection_includes] = 1
-            else:
-                for proj in projection_includes:
-                    self._projection_dict[self._loc_prefix + proj] = 1
-        if find_many:
-            if get_cursor:
-                projection_copy = deepcopy(self._projection_dict) if has_projection else None
-                result = self.collection.find(deepcopy(self._query_matcher), projection_copy, session=db_session)
-                result = self._apply_sort_limit(result, True)
-            elif self.location:
-                result = self.collection.find(self._query_matcher, self._projection_dict, session=db_session)
-                if find_many:
-                    res = []
-                    for doc in self._apply_sort_limit(result):
-                        res += self._nested_get(doc)
-                    result = res
-                    self._helper_list.clear()
+        try:
+            if has_projection:
+                if isinstance(projection_includes, str):
+                    self._projection_dict[self._loc_prefix + projection_includes] = 1
                 else:
-                    result = self._nested_get(result)[0]
-                    self._helper_list.clear()
+                    for proj in projection_includes:
+                        self._projection_dict[self._loc_prefix + proj] = 1
+            if find_many:
+                if get_cursor:
+                    projection_copy = deepcopy(self._projection_dict) if has_projection else None
+                    result = self.collection.find(deepcopy(self._query_matcher), projection_copy, session=db_session)
+                    result = self._apply_sort_limit(result, True)
+                elif self.location:
+                    result = self.collection.find(self._query_matcher, self._projection_dict, session=db_session)
+                    if find_many:
+                        res = []
+                        for doc in self._apply_sort_limit(result):
+                            res += self._nested_get(doc)
+                        result = res
+                        self._helper_list.clear()
+                    else:
+                        result = self._nested_get(result)[0]
+                        self._helper_list.clear()
+                else:
+                    result = self.collection.find(self._query_matcher, self._projection_dict, session=db_session)
+                    result = list(self._apply_sort_limit(result))
+                return self.to_response(result) if generate_response else result
             else:
-                result = self.collection.find(self._query_matcher, self._projection_dict, session=db_session)
-                result = list(self._apply_sort_limit(result))
-            del self._query_matcher[key]
+                sorting = self._sort_list if self._sort_list else None
+                result = self.collection.find_one(self._query_matcher, self._projection_dict,
+                                                  sort=sorting, session=db_session)
+                return self.to_response(result) if generate_response and result is not None else result
+        except Exception as e:
+            self._helper_list.clear()
+            raise e
+        finally:
             if has_projection:
                 self._projection_dict.clear()
-            return self.to_response(result) if generate_response else result
-        else:
-            sorting = self._sort_list if self._sort_list else None
-            result = self.collection.find_one(self._query_matcher, self._projection_dict,
-                                              sort=sorting, session=db_session)
-            del self._query_matcher[key]
-            if has_projection:
-                self._projection_dict.clear()
-            return self.to_response(result) if generate_response and result is not None else result
+            self._query_matcher.clear()
 
     def find_many_nested(self, ids, projection=None, generate_response=False, db_session=None):
         """
@@ -1113,18 +1147,20 @@ class BaseDAO(AbstractDAO):
         :return: List of DB entity model objects that match the provided IDs
         """
         if self.location:
-            if type(ids) is not list:
-                ids = list(ids)
-            self._in_query['$in'] = ids
-            self._query_matcher[self._loc_prefix + "_id"] = self._in_query
-            projection = self.build_projection(projection)
-            # TODO: get only the nested documents with those IDs:
-            #  https://stackoverflow.com/questions/29026662/mongodb-elemmatch-multiple-elements-in-array
-            result = self.collection.find(self._query_matcher, projection, session=db_session)
-            result = [obj for doc in self._apply_sort_limit(result) for obj in self._nested_get(doc)]
-            self._in_query.clear()
-            self._query_matcher.clear()
-            self._helper_list.clear()
+            try:
+                if type(ids) is not list:
+                    ids = list(ids)
+                self._in_query['$in'] = ids
+                self._query_matcher[self._loc_prefix + "_id"] = self._in_query
+                projection = self.build_projection(projection)
+                # TODO: get only the nested documents with those IDs:
+                #  https://stackoverflow.com/questions/29026662/mongodb-elemmatch-multiple-elements-in-array
+                result = self.collection.find(self._query_matcher, projection, session=db_session)
+                result = [obj for doc in self._apply_sort_limit(result) for obj in self._nested_get(doc)]
+            finally:
+                self._in_query.clear()
+                self._query_matcher.clear()
+                self._helper_list.clear()
             if projection:
                 projection.clear()
             return self.to_response(result) if generate_response else result
@@ -1143,22 +1179,25 @@ class BaseDAO(AbstractDAO):
         :return: DB entity model object if found, None otherwise
         """
         if self.location:
-            projection = self.build_projection(projection)
-            self._nested_id_filter["$match"][self._loc_prefix + "_id"] = entity_id
-            result = self.collection.aggregate(self._loc_filter, session=db_session)
             try:
-                result = result.next()
-            except StopIteration:
+                projection = self.build_projection(projection)
+                self._nested_id_filter["$match"][self._loc_prefix + "_id"] = entity_id
+                result = self.collection.aggregate(self._loc_filter, session=db_session)
+                try:
+                    result = result.next()
+                except StopIteration:
+                    return None
+                if not get_root:
+                    result = self._nested_get(result)
+                    if type(result) is list:
+                        result = result[0]
+                    self._helper_list.clear()
+            except Exception as e:
+                self._helper_list.clear()
+                raise e
+            finally:
                 if projection:
                     projection.clear()
-                return None
-            if not get_root:
-                result = self._nested_get(result)
-                if type(result) is list:
-                    result = result[0]
-                self._helper_list.clear()
-            if projection:
-                projection.clear()
             return self.to_response(result) if generate_response and result is not None else result
         else:
             raise NotImplementedError('This is only possible for DAOs referring to nested documents!')
@@ -1208,7 +1247,7 @@ class BaseDAO(AbstractDAO):
                 self._helper_list.append(doc['_id'])
 
     def _invalidate_stats(self, query, db_session=None):
-        if self.stat_references:
+        try:
             self._collect_ids(query, db_session)
             if self.location:
                 for id_list, sdaos in zip(self._helper_list, self.stat_references):
@@ -1218,6 +1257,7 @@ class BaseDAO(AbstractDAO):
             else:
                 for sdao in self.stat_references:
                     sdao().invalidate_cache(self._helper_list, db_session)
+        finally:
             self._projection_dict.clear()
             self._helper_list.clear()
 
@@ -1229,58 +1269,60 @@ class BaseDAO(AbstractDAO):
         """
         query = self._query_matcher if custom_query is None else custom_query
         upd_cmd = self._update_commands if custom_update is None else custom_update
-        if update_many:
-            result = self.collection.update_many(query, upd_cmd, session=db_session)
-            if result.matched_count == 0:
-                self.clear_query()
-                self.clear_update()
-                return None
-        else:
-            result = self.collection.update_one(query, upd_cmd, session=db_session)
-            if result.matched_count == 0:
-                self.clear_query()
-                self.clear_update()
-                return None
-            result = {'at': {}, 'updatedTo': {}}
-            if generate_response:
-                for qfield, qval in query.items():
-                    result['at'][qfield] = str(qval)
-                for updop, updvals in upd_cmd.items():
-                    upd_res_field = result['updatedTo'][updop] = {}
-                    for updfield, val in updvals.items():
-                        upd_res_field[updfield] = str(val)
+        try:
+            if update_many:
+                result = self.collection.update_many(query, upd_cmd, session=db_session)
+                if result.matched_count == 0:
+                    return None
             else:
-                result['at'] = deepcopy(query)
-                result['updatedTo'] = deepcopy(upd_cmd)
-        if notify_stats:
-            self._invalidate_stats(query, db_session)
-        self.clear_query()
-        self.clear_update()
+                result = self.collection.update_one(query, upd_cmd, session=db_session)
+                if result.matched_count == 0:
+                    return None
+                result = {'at': {}, 'updatedTo': {}}
+                if generate_response:
+                    for qfield, qval in query.items():
+                        result['at'][qfield] = str(qval)
+                    for updop, updvals in upd_cmd.items():
+                        upd_res_field = result['updatedTo'][updop] = {}
+                        for updfield, val in updvals.items():
+                            upd_res_field[updfield] = str(val)
+                else:
+                    result['at'] = deepcopy(query)
+                    result['updatedTo'] = deepcopy(upd_cmd)
+            if notify_stats and self.stat_references:
+                self._invalidate_stats(query, db_session)
+        finally:
+            self.clear_query()
+            self.clear_update()
         return result
 
     def array_update(self, array_key, val, where=None, push=True, update_many=True, notify_stats=True, db_session=None):
         # if where=None, then push the value val into every array
-        if where is not None:
-            self._query_matcher[where[0]] = where[1]
-        self._push_op[array_key] = val
-        op_key = '$push' if push else '$pull'
-        self._update_commands[op_key] = self._push_op
-        if update_many:
-            result = self.collection.update_many(self._query_matcher, self._update_commands, session=db_session)
-        else:
-            result = self.collection.update_one(self._query_matcher, self._update_commands, session=db_session)
-        if notify_stats:
-            self._invalidate_stats(self._query_matcher, db_session)
-        self._push_op.clear()
-        self._update_commands.clear()
-        self._query_matcher.clear()
+        try:
+            if where is not None:
+                self._query_matcher[where[0]] = where[1]
+            self._push_op[array_key] = val
+            op_key = '$push' if push else '$pull'
+            self._update_commands[op_key] = self._push_op
+            if update_many:
+                result = self.collection.update_many(self._query_matcher, self._update_commands, session=db_session)
+            else:
+                result = self.collection.update_one(self._query_matcher, self._update_commands, session=db_session)
+            if notify_stats and self.stat_references:
+                self._invalidate_stats(self._query_matcher, db_session)
+        finally:
+            self._push_op.clear()
+            self._update_commands.clear()
+            self._query_matcher.clear()
         return result
 
     def array_push_many(self, array_key, vals, where=None, update_many=True, notify_stats=True, db_session=None):
-        self._push_each['$each'] = vals
-        result = self.array_update(array_key, self._push_each, where, True,
-                                   update_many, notify_stats, db_session)
-        self._push_each.clear()
+        try:
+            self._push_each['$each'] = vals
+            result = self.array_update(array_key, self._push_each, where, True,
+                                       update_many, notify_stats, db_session)
+        finally:
+            self._push_each.clear()
         return result
 
     def _remove_stat_ids_from_helper(self, db_session):
@@ -1305,10 +1347,12 @@ class BaseDAO(AbstractDAO):
     def _remove_stats(self, query, db_session=None):
         if self.stat_references:
             if query:
-                self._collect_ids(query, db_session)
-                self._remove_stat_ids_from_helper(db_session)
-                self._projection_dict.clear()
-                self._helper_list.clear()
+                try:
+                    self._collect_ids(query, db_session)
+                    self._remove_stat_ids_from_helper(db_session)
+                finally:
+                    self._projection_dict.clear()
+                    self._helper_list.clear()
             else:
                 from app.db.stats.daos.base import BaseStatsDAO
                 if self.location:
@@ -1334,20 +1378,22 @@ class BaseDAO(AbstractDAO):
         Otherwise this simply executes the query from custom_query.
         """
         query = self._query_matcher if custom_query is None else custom_query
-        self._remove_stats(query, db_session)
-        if self.location:
-            self._set_field_op[self.location] = self._helper_list
-            self._update_commands['$set'] = self._set_field_op
-            if delete_many:
-                result = self.collection.update_many(query, self._update_commands, session=db_session)
+        try:
+            self._remove_stats(query, db_session)
+            if self.location:
+                self._set_field_op[self.location] = self._helper_list
+                self._update_commands['$set'] = self._set_field_op
+                if delete_many:
+                    result = self.collection.update_many(query, self._update_commands, session=db_session)
+                else:
+                    result = self.collection.update_one(query, self._update_commands, session=db_session)
             else:
-                result = self.collection.update_one(query, self._update_commands, session=db_session)
+                result = self.collection.delete_many(
+                    query, session=db_session) if delete_many else self.collection.delete_one(query, session=db_session)
+        finally:
+            self.clear_query()
             self._set_field_op.clear()
             self._update_commands.clear()
-        else:
-            result = self.collection.delete_many(
-                query, session=db_session) if delete_many else self.collection.delete_one(query, session=db_session)
-        self.clear_query()
         return result
 
     def delete_all(self, generate_response=False, db_session=None):
@@ -1357,35 +1403,41 @@ class BaseDAO(AbstractDAO):
 
     def delete_by_id(self, entity_id, generate_response=False, db_session=None):
         self._query_matcher["_id"] = entity_id
-        self._remove_stats(self._query_matcher, db_session)
-        result = self.collection.delete_one(self._query_matcher, session=db_session)
-        self._query_matcher.clear()
+        try:
+            self._remove_stats(self._query_matcher, db_session)
+            result = self.collection.delete_one(self._query_matcher, session=db_session)
+        finally:
+            self._query_matcher.clear()
         return self.to_response(result, operation=BaseDAO.DELETE) if generate_response else result
 
     def delete_many(self, ids, generate_response=False, db_session=None):
-        if type(ids) is not list:
-            for i in ids:
-                self._helper_list.append(i)
-            ids = self._helper_list
-        self._in_query['$in'] = ids
-        self._query_matcher["_id"] = self._in_query
-        self._remove_stats(self._query_matcher, db_session)
-        result = self.collection.delete_many(self._query_matcher, session=db_session)
-        self._query_matcher.clear()
-        self._in_query.clear()
-        self._helper_list.clear()
+        try:
+            if type(ids) is not list:
+                for i in ids:
+                    self._helper_list.append(i)
+                ids = self._helper_list
+            self._in_query['$in'] = ids
+            self._query_matcher["_id"] = self._in_query
+            self._remove_stats(self._query_matcher, db_session)
+            result = self.collection.delete_many(self._query_matcher, session=db_session)
+        finally:
+            self._query_matcher.clear()
+            self._in_query.clear()
+            self._helper_list.clear()
         if generate_response:
             return self.to_response(result, operation=BaseDAO.DELETE)
         return result
 
     def simple_delete(self, key, value, generate_response=False, db_session=None, delete_many=True):
         self._query_matcher[key] = value
-        self._remove_stats(self._query_matcher, db_session)
-        if delete_many:
-            result = self.collection.delete_many(self._query_matcher, session=db_session)
-        else:
-            result = self.collection.delete_one(self._query_matcher, session=db_session)
-        del self._query_matcher[key]
+        try:
+            self._remove_stats(self._query_matcher, db_session)
+            if delete_many:
+                result = self.collection.delete_many(self._query_matcher, session=db_session)
+            else:
+                result = self.collection.delete_one(self._query_matcher, session=db_session)
+        finally:
+            del self._query_matcher[key]
         return self.to_response(result) if generate_response else result
 
     def delete_all_nested(self, generate_response=False, db_session=None):
@@ -1399,11 +1451,13 @@ class BaseDAO(AbstractDAO):
         # typically not really need an extra DAO for these nested 1-to-1 documents, but we would handle all
         # operations in the root/parent document. That's why this case is not explicitly supported (yet)
         if self.location:
-            self._set_field_op[self._pull_loc] = self._helper_list
-            self._update_commands['$set'] = self._set_field_op
-            result = self.collection.update_many(self._query_matcher, self._update_commands, session=db_session)
-            self._set_field_op.clear()
-            self._update_commands.clear()
+            try:
+                self._set_field_op[self._pull_loc] = self._helper_list
+                self._update_commands['$set'] = self._set_field_op
+                result = self.collection.update_many(self._query_matcher, self._update_commands, session=db_session)
+            finally:
+                self._set_field_op.clear()
+                self._update_commands.clear()
             self._remove_stats(self._query_matcher, db_session)
             return self.to_response(result, operation=BaseDAO.DELETE) if generate_response else result
         else:
@@ -1434,12 +1488,14 @@ class BaseDAO(AbstractDAO):
 
     def _delete_nested_docs(self, generate_response=False, db_session=None):
         if self.location:
-            self._pull_op[self._pull_loc] = self._field_check
-            self._update_commands['$pull'] = self._pull_op
-            self._remove_stats(self._query_matcher, db_session)
-            result = self.collection.update_one(self._query_matcher, self._update_commands, session=db_session)
-            self._pull_op.clear()
-            self._update_commands.clear()
+            try:
+                self._pull_op[self._pull_loc] = self._field_check
+                self._update_commands['$pull'] = self._pull_op
+                self._remove_stats(self._query_matcher, db_session)
+                result = self.collection.update_one(self._query_matcher, self._update_commands, session=db_session)
+            finally:
+                self._pull_op.clear()
+                self._update_commands.clear()
             return self.to_response(result, operation=BaseDAO.DELETE) if generate_response else result
         else:
             raise NotImplementedError('This is only possible for DAOs referring to nested documents!')
@@ -1471,14 +1527,16 @@ class BaseDAO(AbstractDAO):
 
     def delete_nested_doc_by_match(self, key, match_val, generate_response=False, db_session=None):
         if self.location:
-            self._field_check[key] = match_val
-            self._pull_op[self._pull_loc] = self._field_check
-            self._update_commands['$pull'] = self._pull_op
-            self._remove_stats(self._query_matcher, db_session)
-            result = self.collection.update_many(self._query_matcher, self._update_commands, session=db_session)
-            self._field_check.clear()
-            self._pull_op.clear()
-            self._update_commands.clear()
+            try:
+                self._field_check[key] = match_val
+                self._pull_op[self._pull_loc] = self._field_check
+                self._update_commands['$pull'] = self._pull_op
+                self._remove_stats(self._query_matcher, db_session)
+                result = self.collection.update_many(self._query_matcher, self._update_commands, session=db_session)
+            finally:
+                self._field_check.clear()
+                self._pull_op.clear()
+                self._update_commands.clear()
             return self.to_response(result, operation=BaseDAO.DELETE) if generate_response else result
         else:
             raise NotImplementedError('This is only possible for DAOs referring to nested documents!')
@@ -1838,34 +1896,36 @@ class JoinableDAO(BaseDAO):
         # TODO: if fields of the references are non-included/excluded, then skip the corresponding lookup.
         #  Check the top-level projection (_projection_dict) only (perhaps by comparison to "path_hist")
         # if addressing_field=None then we join all fields
-        nest_lvl = 0 if self.location is None else len(self._nested_path)
-        if nest_lvl > 0:
-            if 'init_nested' not in self.join_queries:
-                self.__prepare_nested_start()
-            init_agg = self.join_queries['init_nested']
-            for stage in init_agg:
-                self._agg_pipeline.append(stage)
-        if None in self._join_args:
-            self.__recurse_join(self, self.join_queries, self._agg_pipeline, None, '', '', self._join_args[None])
-        if self._join_args:
-            if not self.join_queries:
-                self.__prepare_joins(self)
-            for address, refs in self.references.items():
-                self._curr_joins.clear()
-                ref_address = refs[0] if type(refs) is tuple else address
-                for path in self._join_args:
-                    if path is None:
-                        continue
-                    if path == ref_address:
+        try:
+            nest_lvl = 0 if self.location is None else len(self._nested_path)
+            if nest_lvl > 0:
+                if 'init_nested' not in self.join_queries:
+                    self.__prepare_nested_start()
+                init_agg = self.join_queries['init_nested']
+                for stage in init_agg:
+                    self._agg_pipeline.append(stage)
+            if None in self._join_args:
+                self.__recurse_join(self, self.join_queries, self._agg_pipeline, None, '', '', self._join_args[None])
+            if self._join_args:
+                if not self.join_queries:
+                    self.__prepare_joins(self)
+                for address, refs in self.references.items():
+                    self._curr_joins.clear()
+                    ref_address = refs[0] if type(refs) is tuple else address
+                    for path in self._join_args:
+                        if path is None:
+                            continue
+                        if path == ref_address:
+                            self.__join_field(address, refs, self.join_queries, self._agg_pipeline,
+                                              None, '', '', self._join_args[ref_address])
+                        elif path.startswith(ref_address):
+                            self._curr_joins[path] = self._join_args[path]
+                    if self._curr_joins:
                         self.__join_field(address, refs, self.join_queries, self._agg_pipeline,
-                                          None, '', '', self._join_args[ref_address])
-                    elif path.startswith(ref_address):
-                        self._curr_joins[path] = self._join_args[path]
-                if self._curr_joins:
-                    self.__join_field(address, refs, self.join_queries, self._agg_pipeline,
-                                      None, '', '', 0)
-        self._curr_joins.clear()
-        self._prev_joins.clear()
+                                          None, '', '', 0)
+        finally:
+            self._curr_joins.clear()
+            self._prev_joins.clear()
         # clean up base projection
         if self._projection_dict:
             val = next(iter(self._projection_dict.values()))
@@ -2005,49 +2065,55 @@ class JoinableDAO(BaseDAO):
         return self._grouping_flag or self._agg_pipeline or self._join_args
 
     def _execute_aggregation(self, query, projection, get_cursor, db_session):
-        if query:
-            self._match_agg_clause['$match'] = query
-            self._agg_pipeline.insert(0, self._match_agg_clause)
-        if self._group_by_agg:
-            self._agg_pipeline.append(self._agg_group)
-        if self._join_args:
-            self._is_unwound = True
-            projection = self.build_projection(projection)
-            self._perform_joins()
-        else:
-            projection = self.build_projection(projection)
-        if projection:
-            self._agg_pipeline.append(self._agg_projection)
-        if self._sort_list:
-            self._agg_sorter.clear()
-            self._agg_sorter.update(self._sort_list)
-            self._agg_pipeline.append(self._agg_sort)
-        if self._skip_results:
-            self._agg_pipeline.append(self._skip_agg)
-        if self._limit_results:
-            self._agg_pipeline.append(self._limit_agg)
-        # print("Executing aggregation:", cls._agg_pipeline)
-        if get_cursor:
-            result = self.collection.aggregate(deepcopy(self._agg_pipeline), session=db_session)
-        else:
-            result = self.collection.aggregate(self._agg_pipeline, session=db_session)
-            if not self._is_unwound and self.location:
-                res = []
-                for doc in result:
-                    res += self._nested_get(doc)
-                result = res
-                self._helper_list.clear()
+        try:
+            if query:
+                self._match_agg_clause['$match'] = query
+                self._agg_pipeline.insert(0, self._match_agg_clause)
+            if self._group_by_agg:
+                self._agg_pipeline.append(self._agg_group)
+            if self._join_args:
+                self._is_unwound = True
+                projection = self.build_projection(projection)
+                self._perform_joins()
             else:
-                result = list(result)
-        if self._pipe_idx_map:
+                projection = self.build_projection(projection)
+            if projection:
+                self._agg_pipeline.append(self._agg_projection)
+            if self._sort_list:
+                self._agg_sorter.clear()
+                self._agg_sorter.update(self._sort_list)
+                self._agg_pipeline.append(self._agg_sort)
+            if self._skip_results:
+                self._agg_pipeline.append(self._skip_agg)
+            if self._limit_results:
+                self._agg_pipeline.append(self._limit_agg)
+            # print("Executing aggregation:", cls._agg_pipeline)
             if get_cursor:
-                result = self._cursor_generator(result, self._pipe_idx_map.copy())
+                result = self.collection.aggregate(deepcopy(self._agg_pipeline), session=db_session)
             else:
-                for doc in result:
-                    self._reconstruct_nested_docs(self, doc, self._pipe_idx_map)
+                result = self.collection.aggregate(self._agg_pipeline, session=db_session)
+                if not self._is_unwound and self.location:
+                    res = []
+                    for doc in result:
+                        res += self._nested_get(doc)
+                    result = res
+                    self._helper_list.clear()
+                else:
+                    result = list(result)
+            if self._pipe_idx_map:
+                if get_cursor:
+                    result = self._cursor_generator(result, self._pipe_idx_map.copy())
+                else:
+                    for doc in result:
+                        self._reconstruct_nested_docs(self, doc, self._pipe_idx_map)
+                self._pipe_idx_map.clear()
+        except Exception as e:
             self._pipe_idx_map.clear()
-        self._agg_pipeline.clear()
-        self._join_args.clear()
+            self._helper_list.clear()
+            raise e
+        finally:
+            self._agg_pipeline.clear()
+            self._join_args.clear()
         return result, projection
 
 

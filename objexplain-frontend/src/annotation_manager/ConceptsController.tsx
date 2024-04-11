@@ -1,4 +1,4 @@
-import {FC, useEffect, useMemo} from "react";
+import {FC, useEffect, useMemo, useState} from "react";
 import {Box, ButtonGroup, Divider, List, ListItem, ListItemIcon} from "@mui/material";
 import Typography from "@mui/material/Typography";
 import {Concept} from "../api/models/concept";
@@ -15,37 +15,39 @@ import {
     addNewConceptDraft,
     addNoun,
     addSelectedConcept,
+    pushSuggestedConcepts,
     selectConceptIdx,
     setSuggestedAdjectives,
     setSuggestedConcepts,
     setSuggestedNouns
 } from "../reducers/annotationCreateSlice";
 import Button from "@mui/material/Button";
+import {Label} from "../api/models/label";
 
 
-export const loadSuggestedConcepts = async () => {
-    // TODO: temporary functionality for testing frontend (true impl should suggest based on selected object)
-    return await getRequest('concept', undefined, {limit: 10})
+export const loadSuggestedConcepts = async (labelId: string, page: number) => {
+    return await getRequest(`stats/concept/tfIdf/label/${labelId}`, page.toString())
 }
 
 
-export const loadSuggestedAdjectives = async () => {
-    // TODO: temporary functionality for testing frontend
-    return await getRequest('corpus/adjective', undefined, {limit: 15})
+export const loadSuggestedAdjectives = async (labelId: string) => {
+    return await getRequest('stats/corpus/adj/tfIdf/label', labelId, {limit: 15})
 }
 
 
-export const loadSuggestedNouns = async () => {
-    // TODO: temporary functionality for testing frontend
-    return await getRequest('corpus/noun', undefined, {limit: 15})
+export const loadSuggestedNouns = async (labelId: string) => {
+    return await getRequest('stats/corpus/noun/tfIdf/label', labelId, {limit: 15})
 }
 
 
 const ConceptsController: FC = () => {
+    const [conceptPageIdx, setConceptPageIdx] = useState<number>(0);
+
     const dispatch = useDispatch();
+    const objectLabel: Label | undefined = useSelector((state: any) => state.object.objectLabel);
     const selectedConceptIdx: number | undefined = useSelector((state: any) => state.newAnno.selectedConceptIdx);
-    const conceptsUsed: boolean[] | undefined = useSelector((state: any) => state.newAnno.conceptsSelected);
-    const concepts: Concept[] | undefined = useSelector((state: any) => state.newAnno.suggestedConcepts);
+    const conceptsUsed: boolean[] = useSelector((state: any) => state.newAnno.conceptsSelected);
+    const concepts: Concept[] = useSelector((state: any) => state.newAnno.suggestedConcepts);
     const adjectives: CorpusWord[] | undefined = useSelector((state: any) => state.newAnno.suggestedAdjectives);
     const nouns: CorpusWord[] | undefined = useSelector((state: any) => state.newAnno.suggestedNouns);
 
@@ -74,8 +76,15 @@ const ConceptsController: FC = () => {
                         </ListItemIcon>
                     </ListItemButton>
                 </ListItem>)}
-            <ListItemButton key={'conceptLoader'} sx={{py: 0, height: '40px'}} onClick={() => {
-            }}>
+            <ListItemButton key={'conceptLoader'} sx={{py: 0, height: '40px'}}
+                            onClick={() => {
+                                if (objectLabel) {
+                                    let newPage = conceptPageIdx + 1
+                                    loadSuggestedConcepts(objectLabel._id, newPage)
+                                        .then(data => data && dispatch(pushSuggestedConcepts(data.result.map((res: any) => res.concept))))
+                                    setConceptPageIdx(newPage)
+                                }
+                            }}>
                 <ListItem divider key={'conceptLoadItem'} sx={{height: '40px'}}>
                     <ListItemIcon sx={{color: 'text.secondary', mr: 2}} key={'conceptLoadIcon'}>
                         <AddIcon/>
@@ -136,10 +145,22 @@ const ConceptsController: FC = () => {
     }, [nouns])
 
     useEffect(() => {
-        !concepts && loadSuggestedConcepts().then(data => data && dispatch(setSuggestedConcepts(data.result)))
-        !adjectives && loadSuggestedAdjectives().then(data => data && dispatch(setSuggestedAdjectives(data.result)))
-        !nouns && loadSuggestedNouns().then(data => data && dispatch(setSuggestedNouns(data.result)))
-    }, []);
+        if (objectLabel) {
+            let labelId = objectLabel._id
+            !adjectives && loadSuggestedAdjectives(labelId)
+                .then(data => data && dispatch(setSuggestedAdjectives(data.result.map((res: any) => res.word))))
+            !nouns && loadSuggestedNouns(labelId)
+                .then(data => data && dispatch(setSuggestedNouns(data.result.map((res: any) => res.word))))
+        }
+    }, [objectLabel]);
+
+    useEffect(() => {
+        if (objectLabel && concepts.length === 0) {
+            setConceptPageIdx(0)
+            loadSuggestedConcepts(objectLabel._id, 0)
+                .then(data => data && dispatch(setSuggestedConcepts(data.result.map((res: any) => res.concept))))
+        }
+    }, [objectLabel, concepts]);
 
     return <>
         <Typography variant='h6'>Select suggested Concepts or build new ones</Typography>

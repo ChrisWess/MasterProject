@@ -170,13 +170,15 @@ class ObjectDAO(JoinableDAO):
         """
         # TODO: Use base64 if not using file transfer? Or zip all images and transfer as 1 file (client needs to
         #  be able to decompress: possible in JS? Or multiplex multiple image requests, how?
-        self._projection_dict['image'] = 1
-        for coord in self.bbox_alias_mapping.values():
-            self._projection_dict[self._loc_prefix + coord] = 1
-        self._query_matcher["_id"] = doc_id
-        result = self.collection.find_one(self._query_matcher, self._projection_dict, session=db_session)
-        self._query_matcher.clear()
-        self._projection_dict.clear()
+        try:
+            self._projection_dict['image'] = 1
+            for coord in self.bbox_alias_mapping.values():
+                self._projection_dict[self._loc_prefix + coord] = 1
+            self._query_matcher["_id"] = doc_id
+            result = self.collection.find_one(self._query_matcher, self._projection_dict, session=db_session)
+        finally:
+            self._query_matcher.clear()
+            self._projection_dict.clear()
         if result is None:
             return None
         img = fs.get(result['image'], session=db_session).read()
@@ -279,34 +281,36 @@ class ObjectDAO(JoinableDAO):
     # @transaction
     def add(self, doc_id, label, bbox, annotations=None, generate_response=False, db_session=None):
         user_id = UserDAO().get_current_user_id()
-        if annotations is None:
-            if isinstance(label, ObjectId):
-                label_id = label
-            elif isinstance(label, dict):
-                label_id = ObjectId(label['_id'])
-            else:
-                label_id = LabelDAO().find_dynamic(label, projection='_id', db_session=db_session)['_id']
-            annotations = self._helper_list
-        else:
-            if isinstance(label, ObjectId):
-                label_id = label
-            elif isinstance(label, dict):
-                label_id = ObjectId(label['_id'])
-            else:
-                label = LabelDAO().find_dynamic(label, projection='_id', db_session=db_session)
-                label_id = label['_id']
-            if isinstance(annotations, str):
-                self._helper_list.append(
-                    AnnotationDAO().prepare_annotation(annotations, label_id, user_id, db_session=db_session))
+        try:
+            if annotations is None:
+                if isinstance(label, ObjectId):
+                    label_id = label
+                elif isinstance(label, dict):
+                    label_id = ObjectId(label['_id'])
+                else:
+                    label_id = LabelDAO().find_dynamic(label, projection='_id', db_session=db_session)['_id']
                 annotations = self._helper_list
             else:
-                annotations = AnnotationDAO().prepare_annotations(annotations, label_id, user_id,
-                                                                  db_session=db_session)
-        obj = DetectedObject(id=ObjectId(), labelId=label_id, annotations=annotations, tlx=bbox[0],
-                             tly=bbox[1], brx=bbox[2], bry=bbox[3], created_by=user_id)
-        # pushes new object into image document
-        response = self.insert_doc(obj, (doc_id,), generate_response=generate_response, db_session=db_session)
-        self._helper_list.clear()
+                if isinstance(label, ObjectId):
+                    label_id = label
+                elif isinstance(label, dict):
+                    label_id = ObjectId(label['_id'])
+                else:
+                    label = LabelDAO().find_dynamic(label, projection='_id', db_session=db_session)
+                    label_id = label['_id']
+                if isinstance(annotations, str):
+                    self._helper_list.append(
+                        AnnotationDAO().prepare_annotation(annotations, label_id, user_id, db_session=db_session))
+                    annotations = self._helper_list
+                else:
+                    annotations = AnnotationDAO().prepare_annotations(annotations, label_id, user_id,
+                                                                      db_session=db_session)
+            obj = DetectedObject(id=ObjectId(), labelId=label_id, annotations=annotations, tlx=bbox[0],
+                                 tly=bbox[1], brx=bbox[2], bry=bbox[3], created_by=user_id)
+            # pushes new object into image document
+            response = self.insert_doc(obj, (doc_id,), generate_response=generate_response, db_session=db_session)
+        finally:
+            self._helper_list.clear()
         from app.db.daos.work_history_dao import WorkHistoryDAO
         WorkHistoryDAO().update_or_add(doc_id, user_id, True, bool(annotations), db_session)
         return response

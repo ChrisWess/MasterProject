@@ -1,5 +1,5 @@
 import {FC, useMemo} from "react";
-import {Box, Button, List, ListItem, ListItemIcon} from "@mui/material";
+import {Box, Button, IconButton, List, ListItem, ListItemIcon} from "@mui/material";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import Typography from "@mui/material/Typography";
@@ -8,6 +8,7 @@ import {
     clearConcepts,
     removeAdjectiveAt,
     removeNounAt,
+    removeSelectedConcept,
     setConceptEditIdx,
     setMode,
     setNewAnnotation
@@ -15,6 +16,7 @@ import {
 import PhraseChip from "./PhraseChip";
 import {getRequest} from "../api/requests";
 import {Label} from "../api/models/label";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 
 interface ConceptBuilderProps {
@@ -35,22 +37,25 @@ const ConceptBuilderView: FC<ConceptBuilderProps> = ({value, index, setAlertCont
     const conceptIdx: number = useSelector((state: any) => state.newAnno.conceptEditIdx);
 
     const unselectedListElement = (tokens: string[], index: number) => {
-        return <ListItemButton key={'concButt' + index} sx={{py: 0}}
-                               onClick={() => dispatch(setConceptEditIdx(index))}>
-            <ListItem divider key={'concItem' + index}>
-                <ListItemIcon key={'concIcon' + index} sx={{color: 'text.secondary', width: '10px'}}>
-                    {index + 1}
-                </ListItemIcon>
+        return <ListItem divider key={'concItem' + index} sx={{py: 0}}>
+            <ListItemIcon key={'concIcon' + index} sx={{color: 'text.secondary', width: '10px', pl: 2}}>
+                {index + 1}
+            </ListItemIcon>
+            <ListItemButton key={'concButt' + index} onClick={() => dispatch(setConceptEditIdx(index))}>
                 <ListItemText key={'concText' + index}>
                     <Typography key={'concTextInner' + index} variant='inherit' color='primary.light'>
                         {tokens.join(' ') + ' ' + concNouns[index].join(' ')}
                     </Typography>
                 </ListItemText>
-            </ListItem>
-        </ListItemButton>
+            </ListItemButton>
+            <IconButton aria-label="comment" onClick={() => dispatch(removeSelectedConcept(index))} sx={{pr: 3.4}}>
+                <DeleteIcon sx={{color: 'text.secondary'}}/>
+            </IconButton>
+        </ListItem>
     }
 
     const conceptList = useMemo(() => {
+        // TODO: Chips in a concept should be draggable to change its position
         return (<List className="concepts" key="conceptList" sx={{p: 0}}>
             {!!conceptIdx && concAdjectives.slice(0, conceptIdx).map((adjectives, index) =>
                 unselectedListElement(adjectives, index))}
@@ -59,7 +64,7 @@ const ConceptBuilderView: FC<ConceptBuilderProps> = ({value, index, setAlertCont
                     <ListItemIcon key={'concEditIcon'} sx={{color: 'text.secondary'}}>
                         {conceptIdx + 1}
                     </ListItemIcon>
-                    <Box>
+                    <Box sx={{width: '100%'}}>
                         {concAdjectives[conceptIdx].map(
                             (token, index) => <PhraseChip key={'concChip' + index}
                                                           token={token}
@@ -73,6 +78,9 @@ const ConceptBuilderView: FC<ConceptBuilderProps> = ({value, index, setAlertCont
                                                           isNoun={true}
                                                           handleDelete={() => dispatch(removeNounAt(index))}/>)}
                     </Box>
+                    <IconButton aria-label="comment" onClick={() => dispatch(removeSelectedConcept(conceptIdx))}>
+                        <DeleteIcon sx={{color: 'text.secondary'}}/>
+                    </IconButton>
                 </ListItem>)}
             {concAdjectives.slice(conceptIdx + 1).map((adjectives, index) => {
                 index = index + conceptIdx + 1;

@@ -84,18 +84,20 @@ class WorkHistoryDAO(JoinableDAO):
         :param db_session:
         :return: Entry entity if found, None otherwise
         """
-        projection = self.build_projection(projection)
-        self._sort_list.append(('updatedAt', DESCENDING))
-        self._query_matcher['workerId'] = worker_id
-        self._ne_query['$ne'] = None
-        self._ne_query['$exists'] = True
-        self._query_matcher['projectId'] = self._ne_query
-        result = self.collection.find_one(self._query_matcher, projection, sort=self._sort_list, session=db_session)
-        self._sort_list.clear()
-        self._query_matcher.clear()
-        self._ne_query.clear()
-        if projection:
-            projection.clear()
+        try:
+            projection = self.build_projection(projection)
+            self._sort_list.append(('updatedAt', DESCENDING))
+            self._query_matcher['workerId'] = worker_id
+            self._ne_query['$ne'] = None
+            self._ne_query['$exists'] = True
+            self._query_matcher['projectId'] = self._ne_query
+            result = self.collection.find_one(self._query_matcher, projection, sort=self._sort_list, session=db_session)
+        finally:
+            self._sort_list.clear()
+            self._query_matcher.clear()
+            self._ne_query.clear()
+            if projection:
+                projection.clear()
         return result if result is None or not generate_response else self.to_response(result)
 
     @dao_query()
@@ -155,13 +157,18 @@ class WorkHistoryDAO(JoinableDAO):
                               is_finished=bool(is_finished), createdAt=update_ts)
             return self.insert_doc(entry, generate_response=False, db_session=db_session)[1]['_id']
         else:
-            entry_id = entry['_id']
-            self._query_matcher['_id'] = entry_id
-            if is_finished is not None:
-                self._set_field_op['isFinished'] = is_finished
-            self._set_field_op['updatedAt'] = update_ts
-            self._update_commands['$set'] = self._set_field_op
-            self.collection.update_one(self._query_matcher, self._update_commands, session=db_session)
+            try:
+                entry_id = entry['_id']
+                self._query_matcher['_id'] = entry_id
+                if is_finished is not None:
+                    self._set_field_op['isFinished'] = is_finished
+                self._set_field_op['updatedAt'] = update_ts
+                self._update_commands['$set'] = self._set_field_op
+                self.collection.update_one(self._query_matcher, self._update_commands, session=db_session)
+            finally:
+                self._query_matcher.clear()
+                self._set_field_op.clear()
+                self._update_commands.clear()
             return entry_id
 
     @dao_update(update_many=False)

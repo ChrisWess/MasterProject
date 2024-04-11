@@ -64,15 +64,17 @@ class CorpusDAO(BaseDAO):
         :param db_session:
         :return: Integer index that represents the given stem
         """
-        self._projection_dict['index'] = 1
-        self._query_matcher["lemma"] = lemma
-        result = self.collection.find(self._query_matcher, self._projection_dict, session=db_session).limit(1)
         try:
-            result = result.next()['index']
-        except StopIteration:
-            result = None
-        self._query_matcher.clear()
-        self._projection_dict.clear()
+            self._projection_dict['index'] = 1
+            self._query_matcher["lemma"] = lemma
+            result = self.collection.find(self._query_matcher, self._projection_dict, session=db_session).limit(1)
+            try:
+                result = result.next()['index']
+            except StopIteration:
+                result = None
+        finally:
+            self._query_matcher.clear()
+            self._projection_dict.clear()
         return result
 
     def find_by_index(self, word_idx, projection=None, generate_response=False, db_session=None):
@@ -95,13 +97,15 @@ class CorpusDAO(BaseDAO):
         :param db_session:
         :return: CorpusWords that have the given index (they have the same lemma)
         """
-        projection = self.build_projection(projection)
-        self._in_query['$in'] = word_idxs
-        self._query_matcher['index'] = self._in_query
-        result = self.collection.find(self._query_matcher, projection, session=db_session)
-        result = list(self._apply_sort_limit(result))
-        self._in_query.clear()
-        self._query_matcher.clear()
+        try:
+            projection = self.build_projection(projection)
+            self._in_query['$in'] = word_idxs
+            self._query_matcher['index'] = self._in_query
+            result = self.collection.find(self._query_matcher, projection, session=db_session)
+            result = list(self._apply_sort_limit(result))
+        finally:
+            self._in_query.clear()
+            self._query_matcher.clear()
         return self.to_response(result) if generate_response else result
 
     def find_concept_words_from_indices(self, word_idxs, db_session=None):
@@ -111,43 +115,45 @@ class CorpusDAO(BaseDAO):
         :param db_session:
         :return: CorpusWords that are most likely to produce a realistic concept
         """
-        self._in_query['$in'] = word_idxs
-        self._query_matcher['index'] = self._in_query
-        result = self._apply_sort_limit(self.collection.find(self._query_matcher, session=db_session))
         adjs, nouns = self._field_check, self._push_op
-        # TODO: take all nouns that have no adjective version, otherwise always take the adjective version.
-        #   but buffer the first occurrence of a noun in case there are no words that have only noun versions
-        for word_data in result:
-            index = word_data['index']
-            prev_adj = adjs.get(index, None)
-            if word_data['nounFlag']:
-                prev_noun = nouns.get(index, None)
-                if not nouns:
-                    nouns[index] = word_data
-                elif len(nouns) > 1:
-                    if prev_noun:
-                        if len(prev_noun['text']) > len(word_data['text']):
-                            nouns[index] = word_data
-                        elif prev_adj:
-                            del nouns[index]
-                elif index in nouns and len(nouns[index]['text']) > len(word_data['text']):
-                    nouns[index] = word_data
-            elif not prev_adj or len(prev_adj['text']) > len(word_data['text']):
-                adjs[index] = word_data
-        self._in_query.clear()
-        self._query_matcher.clear()
-        if not nouns:
+        try:
+            self._in_query['$in'] = word_idxs
+            self._query_matcher['index'] = self._in_query
+            result = self._apply_sort_limit(self.collection.find(self._query_matcher, session=db_session))
+            # TODO: take all nouns that have no adjective version, otherwise always take the adjective version.
+            #   but buffer the first occurrence of a noun in case there are no words that have only noun versions
+            for word_data in result:
+                index = word_data['index']
+                prev_adj = adjs.get(index, None)
+                if word_data['nounFlag']:
+                    prev_noun = nouns.get(index, None)
+                    if not nouns:
+                        nouns[index] = word_data
+                    elif len(nouns) > 1:
+                        if prev_noun:
+                            if len(prev_noun['text']) > len(word_data['text']):
+                                nouns[index] = word_data
+                            elif prev_adj:
+                                del nouns[index]
+                    elif index in nouns and len(nouns[index]['text']) > len(word_data['text']):
+                        nouns[index] = word_data
+                elif not prev_adj or len(prev_adj['text']) > len(word_data['text']):
+                    adjs[index] = word_data
+            if not nouns:
+                raise ValueError('No nouns found in the given word indices!')
+            elif not adjs:
+                raise ValueError('No adjectives found in the given word indices!')
+            root_id = None
+            for noun in nouns.values():
+                root_id = noun['_id']
+                if noun['index'] not in adjs:
+                    break
+            return (*adjs.values(), *nouns.values()), len(nouns), root_id
+        finally:
             adjs.clear()
-            raise ValueError('No nouns found in the given word indices!')
-        elif not adjs:
             nouns.clear()
-            raise ValueError('No adjectives found in the given word indices!')
-        root_id = None
-        for noun in nouns.values():
-            root_id = noun['_id']
-            if noun['index'] not in adjs:
-                break
-        return (*adjs.values(), *nouns.values()), len(nouns), root_id
+            self._in_query.clear()
+            self._query_matcher.clear()
 
     def find_all_nouns(self, projection=None, generate_response=False, db_session=None):
         """
@@ -214,14 +220,16 @@ class CorpusDAO(BaseDAO):
 
     def _find_word_by_lemmas(self, word, lemma, is_noun, db_session=None):
         lemma_idx = -1
-        self._query_matcher['lemma'] = lemma
-        for res in self.collection.find(self._query_matcher, self._projection_dict, session=db_session):
-            if lemma_idx == -1:
-                lemma_idx = res['index']
-            if res['text'] == word and res['nounFlag'] == is_noun:
-                self._query_matcher.clear()
-                return res
-        self._query_matcher.clear()
+        try:
+            self._query_matcher['lemma'] = lemma
+            for res in self.collection.find(self._query_matcher, self._projection_dict, session=db_session):
+                if lemma_idx == -1:
+                    lemma_idx = res['index']
+                if res['text'] == word and res['nounFlag'] == is_noun:
+                    self._query_matcher.clear()
+                    return res
+        finally:
+            self._query_matcher.clear()
         return lemma_idx
 
     # @transaction
@@ -229,13 +237,15 @@ class CorpusDAO(BaseDAO):
         # creates a new word in the corpus collection
         if lemma is None:
             lemma = tokenizer.lemmatize_token(word)
-        self._query_matcher['lemma'] = lemma
-        res = self._find_word_by_lemmas(word, lemma, is_noun, db_session)
-        if isinstance(res, dict):
-            if generate_response:
-                return self.to_response(res)
-            return False, res  # The word already exists in the database
-        self._query_matcher.clear()
+        try:
+            self._query_matcher['lemma'] = lemma
+            res = self._find_word_by_lemmas(word, lemma, is_noun, db_session)
+            if isinstance(res, dict):
+                if generate_response:
+                    return self.to_response(res)
+                return False, res  # The word already exists in the database
+        finally:
+            self._query_matcher.clear()
         if res == -1:
             res = CorpusIndexManager().get_incremented_index(db_session)
         word = CorpusWord(index_val=res, text=word, lemma=lemma, stem=stem, noun_flag=is_noun)
@@ -282,27 +292,31 @@ class CorpusDAO(BaseDAO):
     # @transaction
     def find_phrase_words_or_add(self, phrases, generate_response=False, db_session=None):
         result = []
-        if isinstance(phrases, NounPhrase):
-            self._collect_phrase_info(phrases, result, db_session)
-        else:
-            for phrase in phrases:
-                self._collect_phrase_info(phrase, result, db_session)
-        num_new = len(self._helper_list)
-        if num_new:
-            index_start = CorpusIndexManager().multi_increment_index(num_new, db_session)
-            for i, (idx, lemmidx) in enumerate(self._helper_list):
-                word, lemma, is_noun = result[idx]
-                if lemmidx == -1:
-                    lemmidx = index_start + i
-                self._helper_list[i] = CorpusWord(index_val=lemmidx, text=word, lemma=lemma,
-                                                  stem=None, noun_flag=is_noun)
-            self.insert_docs(self._helper_list, None, False, db_session)
-            new_doc_idx = 0
-            for i, res in enumerate(result):
-                if type(res) is tuple:
-                    result[i] = self._helper_list[new_doc_idx]
-                    new_doc_idx += 1
-                elif type(res) is int:
-                    result[i] = result[res]
+        try:
+            if isinstance(phrases, NounPhrase):
+                self._collect_phrase_info(phrases, result, db_session)
+            else:
+                for phrase in phrases:
+                    self._collect_phrase_info(phrase, result, db_session)
+            num_new = len(self._helper_list)
+            if num_new:
+                index_start = CorpusIndexManager().multi_increment_index(num_new, db_session)
+                for i, (idx, lemmidx) in enumerate(self._helper_list):
+                    word, lemma, is_noun = result[idx]
+                    if lemmidx == -1:
+                        lemmidx = index_start + i
+                    self._helper_list[i] = CorpusWord(index_val=lemmidx, text=word, lemma=lemma,
+                                                      stem=None, noun_flag=is_noun)
+                self.insert_docs(self._helper_list, None, False, db_session)
+                new_doc_idx = 0
+                for i, res in enumerate(result):
+                    if type(res) is tuple:
+                        result[i] = self._helper_list[new_doc_idx]
+                        new_doc_idx += 1
+                    elif type(res) is int:
+                        result[i] = result[res]
+                self._helper_list.clear()
+        except Exception as e:
             self._helper_list.clear()
+            raise e
         return self.to_response(result) if generate_response else result

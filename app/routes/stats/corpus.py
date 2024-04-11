@@ -17,8 +17,13 @@ def find_corpus_tf_idfs():
 
 @application.route('/stats/corpus/adj/tfIdf/label/<label_id>', methods=['GET'])
 def find_adjective_tf_idfs_by_label(label_id):
+    args = request.args
     try:
-        return CorpusTfIdfDAO().find_top_adjectives_by_label(ObjectId(label_id), generate_response=True)
+        if 'limit' in args:
+            limit = int(args['limit'])
+            return CorpusTfIdfDAO().find_top_adjectives_by_label(ObjectId(label_id), limit, generate_response=True)
+        else:
+            return CorpusTfIdfDAO().find_top_adjectives_by_label(ObjectId(label_id), generate_response=True)
     except InvalidId:
         err_msg = "The Label ID you provided is not a valid ID!"
         application.logger.error(err_msg)
@@ -27,8 +32,13 @@ def find_adjective_tf_idfs_by_label(label_id):
 
 @application.route('/stats/corpus/noun/tfIdf/label/<label_id>', methods=['GET'])
 def find_noun_tf_idfs_by_label(label_id):
+    args = request.args
     try:
-        return CorpusTfIdfDAO().find_top_nouns_by_label(ObjectId(label_id), generate_response=True)
+        if 'limit' in args:
+            limit = int(args['limit'])
+            return CorpusTfIdfDAO().find_top_nouns_by_label(ObjectId(label_id), limit, generate_response=True)
+        else:
+            return CorpusTfIdfDAO().find_top_nouns_by_label(ObjectId(label_id), generate_response=True)
     except InvalidId:
         err_msg = "The Label ID you provided is not a valid ID!"
         application.logger.error(err_msg)

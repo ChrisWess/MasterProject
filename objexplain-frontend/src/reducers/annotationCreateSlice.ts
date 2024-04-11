@@ -14,9 +14,9 @@ interface NewAnnotationPageState {
     nounIdxs: number[][];
     conceptEditIdx: number;
     annosSelected: boolean[] | undefined;
-    conceptsSelected: boolean[] | undefined;
     selectedConceptIdx: number | undefined;
-    suggestedConcepts: Concept[] | undefined;
+    conceptsSelected: boolean[];
+    suggestedConcepts: Concept[];
     suggestedAdjectives: CorpusWord[] | undefined;
     suggestedNouns: CorpusWord[] | undefined;
 }
@@ -32,9 +32,9 @@ const initialState: NewAnnotationPageState = {
     nounIdxs: [],
     conceptEditIdx: 0,
     annosSelected: undefined,
-    conceptsSelected: undefined,
     selectedConceptIdx: undefined,
-    suggestedConcepts: undefined,
+    conceptsSelected: [],
+    suggestedConcepts: [],
     suggestedAdjectives: undefined,
     suggestedNouns: undefined,
 };
@@ -55,8 +55,8 @@ export const newAnnotationPageSlice = createSlice({
             state.conceptEditIdx = 0
             state.selectedConceptIdx = undefined
             state.annosSelected = undefined
-            state.conceptsSelected = undefined
-            state.suggestedConcepts = undefined
+            state.conceptsSelected = []
+            state.suggestedConcepts = []
             state.suggestedAdjectives = undefined
             state.suggestedNouns = undefined
         },
@@ -103,7 +103,7 @@ export const newAnnotationPageSlice = createSlice({
             let adjArr = state.adjectives;
             let aidxs = state.adjectiveIdxs;
             let editIdx = state.conceptEditIdx;
-            if (!editIdx && adjArr.length === 0) {
+            if (adjArr.length === 0) {
                 let nounArr = state.nouns;
                 let nidxs = state.nounIdxs;
                 adjArr.push([adjective])
@@ -125,7 +125,7 @@ export const newAnnotationPageSlice = createSlice({
             let nounArr = state.nouns
             let nidxs = state.nounIdxs;
             let editIdx = state.conceptEditIdx;
-            if (!editIdx && nounArr.length === 0) {
+            if (nounArr.length === 0) {
                 let adjArr = state.adjectives;
                 let aidxs = state.adjectiveIdxs;
                 adjArr.push([])
@@ -200,6 +200,25 @@ export const newAnnotationPageSlice = createSlice({
             state.adjectiveIdxs = aidxs;
             state.nounIdxs = nidxs;
         },
+        removeSelectedConcept: (state, action: PayloadAction<number>) => {
+            let rmvAt = action.payload
+            let adjs = state.adjectives;
+            let nouns = state.nouns;
+            let aidxs = state.adjectiveIdxs;
+            let nidxs = state.nounIdxs;
+            adjs.splice(rmvAt, 1)
+            nouns.splice(rmvAt, 1)
+            aidxs.splice(rmvAt, 1)
+            nidxs.splice(rmvAt, 1)
+            state.adjectives = adjs;
+            state.nouns = nouns;
+            state.adjectiveIdxs = aidxs;
+            state.nounIdxs = nidxs;
+            let idx = state.conceptEditIdx;
+            if (idx !== 0 && idx >= rmvAt) {
+                state.conceptEditIdx = idx - 1;
+            }
+        },
         initAnnoSelectionFlags: (state, action: PayloadAction<number>) => {
             state.annosSelected = Array(action.payload).fill(false);
         },
@@ -244,7 +263,15 @@ export const newAnnotationPageSlice = createSlice({
             let concepts = action.payload;
             state.suggestedConcepts = concepts;
             state.conceptsSelected = Array(concepts.length).fill(false);
-
+        },
+        pushSuggestedConcepts: (state, action: PayloadAction<Concept[]>) => {
+            let oldConcepts = state.suggestedConcepts
+            let selections = state.conceptsSelected
+            let concepts = action.payload;
+            oldConcepts.push(...concepts);
+            selections.push(...Array(concepts.length).fill(false));
+            state.suggestedConcepts = oldConcepts
+            state.conceptsSelected = selections
         },
         setSuggestedAdjectives: (state, action: PayloadAction<CorpusWord[]>) => {
             state.suggestedAdjectives = action.payload;
@@ -285,8 +312,8 @@ export const {
     clearSuggestedText, addNewConceptDraft, addAdjective, addNoun,
     removeAdjectiveAt, removeNounAt, setConceptEditIdx, addFullConcept,
     addFullConcepts, initAnnoSelectionFlags, markAnnoSelected, initConceptSelectionFlags,
-    addSelectedConcept, selectConceptIdx, setSuggestedConcepts, setSuggestedAdjectives,
-    setSuggestedNouns, setNewAnnotation,
+    addSelectedConcept, removeSelectedConcept, selectConceptIdx, setSuggestedConcepts,
+    pushSuggestedConcepts, setSuggestedAdjectives, setSuggestedNouns, setNewAnnotation,
 
 } = newAnnotationPageSlice.actions;
 

@@ -90,8 +90,8 @@ class ConceptTfIdfDAO(MultiDimDocStatsDAO):
                          ], {'concept': ConceptDAO, 'label': LabelDAO})
 
     def find_top_by_label(self, label_id, page_idx, generate_response=False):
-        skip = page_idx * 10
-        return self.find_by_dim_val('label', label_id, sort='tfIdf', skip=skip, limit=10,
+        skip = page_idx * 15
+        return self.find_by_dim_val('label', label_id, sort='tfIdf', skip=skip, limit=15,
                                     expand_dims='concept', generate_response=generate_response)
 
 

@@ -67,9 +67,9 @@ const NewAnnotationControlPanel: FC = () => {
             <Box sx={{width: '100%'}}>
                 <Box sx={{borderBottom: 1, borderColor: 'divider'}}>
                     <Tabs value={modeId} onChange={handleChange} aria-label="annotation type tabs">
-                        <Tab label="Text Writer"/>
-                        <Tab label="Concept Selector"/>
-                        <Tab disabled={!annotation} label="Inspect new Annotation"/>
+                        <Tab label="Text Writer" sx={{color: 'white'}}/>
+                        <Tab label="Concept Selector" sx={{color: 'white'}}/>
+                        <Tab disabled={!annotation} label="Inspect new Annotation" sx={{color: 'white'}}/>
                     </Tabs>
                 </Box>
                 <TabPanel value={modeId} index={0}>

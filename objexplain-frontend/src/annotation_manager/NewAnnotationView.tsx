@@ -18,6 +18,7 @@ import {Label} from "../api/models/label";
 import {fetchLabel} from "../object_annotator/LabelSelector";
 import {getMappedLabel} from "../object_annotator/ObjectControl";
 import AlertMessage from "../components/AlertMessage";
+import {putRequest} from "../api/requests";
 
 
 const AnnotationCreateView: FC = () => {
@@ -41,6 +42,7 @@ const AnnotationCreateView: FC = () => {
     let objIntIdx = objIdx ? parseInt(objIdx) : undefined;
 
     useEffect(() => {
+        putRequest('stats/project/suggestions', null)
         if (!projectName) {
             navigate('/notfound404')
         } else if (!project || project.title != projectName) {

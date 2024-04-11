@@ -149,23 +149,25 @@ class ProjectDAO(JoinableDAO):
         """
         result = self.find_by_member(user_id, projection=projection, db_session=db_session)
         if result:
-            for i, res in enumerate(result):
-                project_id = res['_id']
-                res = self.payload_model(**res).to_dict()
-                result[i] = res
-                self._field_check[project_id] = res
-                self._helper_list.append(project_id)
-            stats = ProjectProgressDAO()
-            stats.update(self._helper_list, db_session=db_session)
-            stats = stats.find_stats_by_ids(self._helper_list, projection=('numDocs', 'progress'),
-                                            get_cursor=True, db_session=db_session)
-            for res in stats:
-                if res['_id'] in self._field_check:
-                    doc = self._field_check[res['_id']]
-                    doc['numDocs'] = res['numDocs']
-                    doc['progress'] = res['progress']
-            self._field_check.clear()
-            self._helper_list.clear()
+            try:
+                for i, res in enumerate(result):
+                    project_id = res['_id']
+                    res = self.payload_model(**res).to_dict()
+                    result[i] = res
+                    self._field_check[project_id] = res
+                    self._helper_list.append(project_id)
+                stats = ProjectProgressDAO()
+                stats.update(self._helper_list, db_session=db_session)
+                stats = stats.find_stats_by_ids(self._helper_list, projection=('numDocs', 'progress'),
+                                                get_cursor=True, db_session=db_session)
+                for res in stats:
+                    if res['_id'] in self._field_check:
+                        doc = self._field_check[res['_id']]
+                        doc['numDocs'] = res['numDocs']
+                        doc['progress'] = res['progress']
+            finally:
+                self._field_check.clear()
+                self._helper_list.clear()
         if generate_response:
             # model schema extended by stats (validated projects earlier)
             return self.to_response(result, validate=False)
@@ -214,107 +216,107 @@ class ProjectDAO(JoinableDAO):
         num_proj_docs = len(proj_doc_ids)  # number of docs in the project (max possible result size)
         if n_fetch > num_proj_docs:
             return ImgDocDAO().find_many(proj_doc_ids, projection, generate_response, db_session=db_session)
-        total_prio = ProjectProgressDAO().update_and_get(project_id, 'totalPrio',
-                                                         db_session=db_session)['totalPrio']
-        if filter_user_history:
-            self._notin_annotator_history(project_id, proj_doc_ids, db_session)
-        else:
-            PrioStatsDAO().find_prio_imgs(proj_doc_ids, self._helper_list, db_session=db_session)
-        num_docs = len(self._helper_list)
-        if num_docs == 0:
-            for idx in self.rng.choice(num_proj_docs, size=n_fetch, replace=False):
-                self._helper_list.append(proj_doc_ids[int(idx)])
-            result = ImgDocDAO().find_many(self._helper_list, projection, generate_response, db_session=db_session)
-            self._helper_list.clear()
-            return result
-        elif num_docs > 1:
-            # TODO: Also interesting to compute the thoroughness as "thorough" = num_annos / num_objs.
-            if n_fetch >= num_docs:
-                for i, doc in enumerate(self._helper_list):
-                    self._helper_list[i] = doc[0]
+        try:
+            total_prio = ProjectProgressDAO().update_and_get(project_id, 'totalPrio',
+                                                             db_session=db_session)['totalPrio']
+            if filter_user_history:
+                self._notin_annotator_history(project_id, proj_doc_ids, db_session)
+            else:
+                PrioStatsDAO().find_prio_imgs(proj_doc_ids, self._helper_list, db_session=db_session)
+            num_docs = len(self._helper_list)
+            if num_docs == 0:
+                for idx in self.rng.choice(num_proj_docs, size=n_fetch, replace=False):
+                    self._helper_list.append(proj_doc_ids[int(idx)])
                 result = ImgDocDAO().find_many(self._helper_list, projection, generate_response, db_session=db_session)
-                self._helper_list.clear()
                 return result
-            elif total_prio == 0.0:
-                if n_fetch > 1:
-                    for idx in self.rng.choice(num_docs, size=n_fetch, replace=False):
-                        self._accumweights.append(self._helper_list[int(idx)][0])
-                    result = ImgDocDAO().find_many(self._accumweights, projection,
-                                                   generate_response, db_session=db_session)
-                    self._accumweights.clear()
-                    self._helper_list.clear()
+            elif num_docs > 1:
+                # TODO: Also interesting to compute the thoroughness as "thorough" = num_annos / num_objs.
+                if n_fetch >= num_docs:
+                    for i, doc in enumerate(self._helper_list):
+                        self._helper_list[i] = doc[0]
+                    result = ImgDocDAO().find_many(self._helper_list, projection, generate_response,
+                                                   db_session=db_session)
                     return result
-                else:
-                    result = ImgDocDAO().find_by_id(self._helper_list[self.rng.choice(num_docs)][0], projection,
-                                                    generate_response, db_session=db_session)
-                    self._helper_list.clear()
-                    return result
-            if n_fetch > 1:
-                cumweights = 0.0
-                self._accumweights.append(cumweights)
-                i_, i, started = 0, 0, -1
-                yielded_idxs, mprios, result = set(), [], []
-                rpos = self.rng.random(n_fetch) * total_prio
-                while len(result) < n_fetch:
-                    if i_ < num_docs:
-                        cumweights += self._helper_list[i_][1]
-                        self._accumweights.append(cumweights)
-                    if i == started and i_ > num_docs:
-                        if i not in yielded_idxs:
-                            result.append(self._helper_list[i][0])
+                elif total_prio == 0.0:
+                    if n_fetch > 1:
+                        try:
+                            for idx in self.rng.choice(num_docs, size=n_fetch, replace=False):
+                                self._accumweights.append(self._helper_list[int(idx)][0])
+                            result = ImgDocDAO().find_many(self._accumweights, projection,
+                                                           generate_response, db_session=db_session)
+                        finally:
+                            self._accumweights.clear()
+                        return result
                     else:
-                        matches = np.sum(np.logical_and(self._accumweights[i] <= rpos,
-                                                        rpos < self._accumweights[i + 1])).item()
-                        if matches:
-                            if started == -1:
-                                started = i
-                            id_, prio = self._helper_list[i]
-                            if matches > 2:
-                                for j in range(matches - 1):
-                                    mprios.append(prio)
-                            elif matches == 2:
-                                mprios.append(prio)
-                            result.append(id_)
-                            yielded_idxs.add(i)
-                        elif mprios:
-                            # Retrieve the next image with a >=prio as one of the overflown matches
-                            id_, prio = self._helper_list[i]
-                            for j, mprio in enumerate(mprios):
-                                if prio >= mprio:
+                        result = ImgDocDAO().find_by_id(self._helper_list[self.rng.choice(num_docs)][0], projection,
+                                                        generate_response, db_session=db_session)
+                        return result
+                if n_fetch > 1:
+                    try:
+                        cumweights = 0.0
+                        self._accumweights.append(cumweights)
+                        i_, i, started = 0, 0, -1
+                        yielded_idxs, mprios, result = set(), [], []
+                        rpos = self.rng.random(n_fetch) * total_prio
+                        while len(result) < n_fetch:
+                            if i_ < num_docs:
+                                cumweights += self._helper_list[i_][1]
+                                self._accumweights.append(cumweights)
+                            if i == started and i_ > num_docs:
+                                if i not in yielded_idxs:
+                                    result.append(self._helper_list[i][0])
+                            else:
+                                matches = np.sum(np.logical_and(self._accumweights[i] <= rpos,
+                                                                rpos < self._accumweights[i + 1])).item()
+                                if matches:
+                                    if started == -1:
+                                        started = i
+                                    id_, prio = self._helper_list[i]
+                                    if matches > 2:
+                                        for j in range(matches - 1):
+                                            mprios.append(prio)
+                                    elif matches == 2:
+                                        mprios.append(prio)
                                     result.append(id_)
                                     yielded_idxs.add(i)
-                                    del mprios[j]
-                                    break
-                    i_ = i_ + 1
-                    while i_ in yielded_idxs:
-                        i_ += 1
-                    i = i_ % num_docs
-                self._accumweights.clear()
-                self._helper_list.clear()
-                return ImgDocDAO().find_many(result, projection, generate_response, db_session=db_session)
-            else:
-                rpos = self.rng.random() * total_prio
-                if rpos > total_prio / 2:
-                    cumval = total_prio
-                    for i, prio in reversed(self._helper_list):
-                        new_val = cumval - prio
-                        if new_val <= rpos < cumval:
-                            self._helper_list.clear()
-                            return ImgDocDAO().find_by_id(i, projection, generate_response, db_session=db_session)
-                        cumval = new_val
+                                elif mprios:
+                                    # Retrieve the next image with a >=prio as one of the overflown matches
+                                    id_, prio = self._helper_list[i]
+                                    for j, mprio in enumerate(mprios):
+                                        if prio >= mprio:
+                                            result.append(id_)
+                                            yielded_idxs.add(i)
+                                            del mprios[j]
+                                            break
+                            i_ = i_ + 1
+                            while i_ in yielded_idxs:
+                                i_ += 1
+                            i = i_ % num_docs
+                    finally:
+                        self._accumweights.clear()
+                    return ImgDocDAO().find_many(result, projection, generate_response, db_session=db_session)
                 else:
-                    cumval = 0.0
-                    for i, prio in self._helper_list:
-                        new_val = cumval + prio
-                        if cumval <= rpos < new_val:
-                            self._helper_list.clear()
-                            return ImgDocDAO().find_by_id(i, projection, generate_response, db_session=db_session)
-                        cumval = new_val
-                raise ValueError("Did not fetch an image!")  # If this happens, algo has an error
-        else:
-            i = self._helper_list[0][0]
+                    rpos = self.rng.random() * total_prio
+                    if rpos > total_prio / 2:
+                        cumval = total_prio
+                        for i, prio in reversed(self._helper_list):
+                            new_val = cumval - prio
+                            if new_val <= rpos < cumval:
+                                return ImgDocDAO().find_by_id(i, projection, generate_response, db_session=db_session)
+                            cumval = new_val
+                    else:
+                        cumval = 0.0
+                        for i, prio in self._helper_list:
+                            new_val = cumval + prio
+                            if cumval <= rpos < new_val:
+                                return ImgDocDAO().find_by_id(i, projection, generate_response, db_session=db_session)
+                            cumval = new_val
+                    raise ValueError("Did not fetch an image!")  # If this happens, algo has an error
+            else:
+                i = self._helper_list[0][0]
+                return ImgDocDAO().find_by_id(i, projection, generate_response, db_session=db_session)
+        finally:
             self._helper_list.clear()
-            return ImgDocDAO().find_by_id(i, projection, generate_response, db_session=db_session)
 
     def find_new_doc_slice(self, project_id, curr_doc_id, num_fetch, projection=None,
                            generate_response=False, db_session=None):
@@ -342,45 +344,46 @@ class ProjectDAO(JoinableDAO):
                 result = result[res_idx:] + result[:res_idx]
             return ImgDocDAO().find_many_retain_order(result, sort_arg, projection=projection,
                                                       generate_response=generate_response, db_session=db_session)
-        self._slice_array[2] = num_fetch
-        self._array_idx_agg[1] = curr_doc_id
-        self._projection_dict['idSlice'] = self._slice_agg
-        self._projection_dict['idx'] = 1
-        self._query_matcher['_id'] = project_id
-        self._match_agg_clause['$match'] = self._query_matcher
-        result = self.collection.aggregate(self._fetch_docs_agg, session=db_session)
         try:
+            self._slice_array[2] = num_fetch
+            self._array_idx_agg[1] = curr_doc_id
+            self._projection_dict['idSlice'] = self._slice_agg
+            self._projection_dict['idx'] = 1
+            self._query_matcher['_id'] = project_id
+            self._match_agg_clause['$match'] = self._query_matcher
+            result = self.collection.aggregate(self._fetch_docs_agg, session=db_session)
             result = next(result)
             slce = result['idSlice']
             if num_fetch > len(slce):
                 self._slice_array[1] = 0
                 del self._projection_dict['idx']
-                self._agg_pipeline.append(self._match_agg_clause)
-                self._agg_pipeline.append(self._agg_projection)
-                if not prev_flag and result['idx'] - num_fetch < 0:
-                    # All IDs from indices 0 to (result['idx'] - 1)
-                    self._slice_array[2] = result['idx']
-                else:  # i.e. not prev_flag and result['idx'] + num_fetch > result['numDocsTotal']
-                    # All IDs from 0 to (result['idx'] + num_fetch - result['numDocsTotal'])
-                    self._slice_array[2] = result['idx'] + 1 + num_fetch - num_docs
-                missing_slice = next(self.collection.aggregate(self._agg_pipeline, session=db_session))['idSlice']
-                for i, doc in enumerate(reversed(tuple(missing_slice))):
-                    missing_slice[i] = doc
-                missing_slice.extend(reversed(slce))
-                slce = missing_slice
-                self._slice_array[1] = self._slice_start
-                self._agg_pipeline.clear()
+                try:
+                    self._agg_pipeline.append(self._match_agg_clause)
+                    self._agg_pipeline.append(self._agg_projection)
+                    if not prev_flag and result['idx'] - num_fetch < 0:
+                        # All IDs from indices 0 to (result['idx'] - 1)
+                        self._slice_array[2] = result['idx']
+                    else:  # i.e. not prev_flag and result['idx'] + num_fetch > result['numDocsTotal']
+                        # All IDs from 0 to (result['idx'] + num_fetch - result['numDocsTotal'])
+                        self._slice_array[2] = result['idx'] + 1 + num_fetch - num_docs
+                    missing_slice = next(self.collection.aggregate(self._agg_pipeline, session=db_session))['idSlice']
+                    for i, doc in enumerate(reversed(tuple(missing_slice))):
+                        missing_slice[i] = doc
+                    missing_slice.extend(reversed(slce))
+                    slce = missing_slice
+                    self._slice_array[1] = self._slice_start
+                finally:
+                    self._agg_pipeline.clear()
                 sort_arg = None
             else:
                 sort_arg = 'createdAt'
-            self._projection_dict.clear()
-            self._query_matcher.clear()
             return ImgDocDAO().find_many_retain_order(slce, sort_arg, projection=projection,
                                                       generate_response=generate_response, db_session=db_session)
         except StopIteration:
+            return None
+        finally:
             self._projection_dict.clear()
             self._query_matcher.clear()
-            return None
 
     @dao_query()
     def unrolled(self, unroll_depth=2):
@@ -421,19 +424,23 @@ class ProjectDAO(JoinableDAO):
     def add_idoc_to_project(self, project_id, doc_id, exist_check=True, generate_response=False, db_session=None):
         if exist_check and ImgDocDAO().find_by_id(doc_id, db_session=db_session) is None:
             raise ValueError(f'No Image Document with ID {doc_id} could be found!')
-        self._set_field_op['updatedAt'] = datetime.now()
-        self._update_commands['$set'] = self._set_field_op
-        result = self.array_update('docIds', doc_id, where=('_id', project_id),
-                                   update_many=False, db_session=db_session)
-        del self._set_field_op['updatedAt']
+        try:
+            self._set_field_op['updatedAt'] = datetime.now()
+            self._update_commands['$set'] = self._set_field_op
+            result = self.array_update('docIds', doc_id, where=('_id', project_id),
+                                       update_many=False, db_session=db_session)
+        finally:
+            del self._set_field_op['updatedAt']
         return self.to_response(result, BaseDAO.UPDATE) if generate_response else result
 
     def add_idocs_to_project(self, project_id, doc_ids, generate_response=False, db_session=None):
-        self._set_field_op['updatedAt'] = datetime.now()
-        self._update_commands['$set'] = self._set_field_op
-        result = self.array_push_many('docIds', doc_ids, where=('_id', project_id),
-                                      update_many=False, db_session=db_session)
-        del self._set_field_op['updatedAt']
+        try:
+            self._set_field_op['updatedAt'] = datetime.now()
+            self._update_commands['$set'] = self._set_field_op
+            result = self.array_push_many('docIds', doc_ids, where=('_id', project_id),
+                                          update_many=False, db_session=db_session)
+        finally:
+            del self._set_field_op['updatedAt']
         return self.to_response(result, BaseDAO.UPDATE) if generate_response else result
 
     def remove_idoc_from_project(self, project_id, doc_id, delete_doc=True, generate_response=False, db_session=None):
@@ -445,11 +452,13 @@ class ProjectDAO(JoinableDAO):
             was_found = bool(result.modified_count)
         if not was_found:
             return None
-        self._set_field_op['updatedAt'] = datetime.now()
-        self._update_commands['$set'] = self._set_field_op
-        result = self.array_update('docIds', doc_id, ('_id', project_id), False,
-                                   False, db_session=db_session)
-        del self._set_field_op['updatedAt']
+        try:
+            self._set_field_op['updatedAt'] = datetime.now()
+            self._update_commands['$set'] = self._set_field_op
+            result = self.array_update('docIds', doc_id, ('_id', project_id), False,
+                                       False, db_session=db_session)
+        finally:
+            del self._set_field_op['updatedAt']
         return self.to_response(result, BaseDAO.UPDATE) if generate_response else result
 
     @dao_update(update_many=False, update_stats=False)
@@ -467,18 +476,22 @@ class ProjectDAO(JoinableDAO):
 
     def delete_all_cascade(self, generate_response=False, db_session=None):
         doc_ids = self.find_all(projection='docIds', get_cursor=True, db_session=db_session)
-        for docs in doc_ids:
-            self._helper_list.extend(docs['docIds'])
-        ImgDocDAO().delete_many(self._helper_list, db_session=db_session)
-        self._helper_list.clear()
+        try:
+            for docs in doc_ids:
+                self._helper_list.extend(docs['docIds'])
+            ImgDocDAO().delete_many(self._helper_list, db_session=db_session)
+        finally:
+            self._helper_list.clear()
         return self.delete_all(generate_response, db_session)
 
     def delete_many_cascade(self, project_ids, generate_response=False, db_session=None):
         doc_ids = self.find_many(project_ids, projection='docIds', get_cursor=True, db_session=db_session)
-        for docs in doc_ids:
-            self._helper_list.extend(docs['docIds'])
-        ImgDocDAO().delete_many(self._helper_list, db_session=db_session)
-        self._helper_list.clear()
+        try:
+            for docs in doc_ids:
+                self._helper_list.extend(docs['docIds'])
+            ImgDocDAO().delete_many(self._helper_list, db_session=db_session)
+        finally:
+            self._helper_list.clear()
         return self.delete_many(project_ids, generate_response, db_session)
 
     def delete_by_id_cascade(self, project_id, generate_response=False, db_session=None):
