@@ -141,7 +141,7 @@ const FeatureAnnotator: FC<FeatureAnnotatorProps> = ({
         if (isMoveImg) {
             gDrag.on(".drag", null);
 
-            zoom.on("zoom", handleZoom);
+            zoom.scaleExtent([0.1, 20]).on("zoom", handleZoom);
             svg.call(zoom);
         } else {
             svg.on(".zoom", null);
@@ -161,8 +161,7 @@ const FeatureAnnotator: FC<FeatureAnnotatorProps> = ({
             let bry = (bbox.bry / heightRatio) + borderDistHeight;
             return (<g key={'annoBbox' + index}>
                 <BoundingBox key={'bboxRect' + index} objIdx={index} opacity={0.3}
-                             color={'yellow'}
-                             tlx={tlx} tly={tly} brx={brx} bry={bry}/>
+                             color={'yellow'} tlx={tlx} tly={tly} brx={brx} bry={bry}/>
             </g>)
         }
         return <Fragment key={'bboxPlaceholder' + index}></Fragment>
@@ -217,9 +216,7 @@ const FeatureAnnotator: FC<FeatureAnnotatorProps> = ({
 
     return (
         <svg
-            ref={svgRef}
-            width="100%"
-            height={pixelHeight + 'px'}
+            ref={svgRef} width="100%" height={pixelHeight + 'px'}
             style={{cursor: isMoveImg ? "move" : "auto"}}
         >
             <g ref={gZoomRef}>

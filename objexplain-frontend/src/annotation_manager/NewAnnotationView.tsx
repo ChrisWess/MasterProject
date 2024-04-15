@@ -19,6 +19,7 @@ import {fetchLabel} from "../object_annotator/LabelSelector";
 import {getMappedLabel} from "../object_annotator/ObjectControl";
 import AlertMessage from "../components/AlertMessage";
 import {putRequest} from "../api/requests";
+import {DetectedObject} from "../api/models/object";
 
 
 const AnnotationCreateView: FC = () => {
@@ -34,6 +35,7 @@ const AnnotationCreateView: FC = () => {
     // global state (redux)
     const project: ProjectStats | undefined = useSelector((state: any) => state.mainPage.currProject);
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
+    const detObj: DetectedObject | undefined = useSelector((state: any) => state.object.detObj);
     const imgUrl: string | undefined = useSelector((state: any) => state.iDoc.imgUrl);
     const labelsMap: [string, Label][] | undefined = useSelector((state: any) => state.iDoc.labelMap);
     const objectLabel: Label | undefined = useSelector((state: any) => state.object.objectLabel);
@@ -94,6 +96,10 @@ const AnnotationCreateView: FC = () => {
         }
     }, [idoc, imgUrl, objIntIdx, labelsMap]);
 
+    // TODO: Add Next/Previous Buttons to quickly switch between annotating objects (and go to first object
+    //  of next image after "next" on the last object). In the annotator mode, after clicking "finalize annotation",
+    //  the New-Annotation View for the next object should be shown.
+
     return (
         <Box height='100%'>
             <Box height='59%'
@@ -104,8 +110,10 @@ const AnnotationCreateView: FC = () => {
                      position: 'relative'
                  }}>
                 <Box ref={imgContainer} height='93%' sx={{
-                    position: 'absolute', display: 'block',
-                    left: '50%', transform: 'translateX(-50%)'
+                    position: 'absolute',
+                    display: 'block',
+                    left: '50%',
+                    transform: `translateX(-50%) scale(${detObj ? Math.min(1, (1170 / 440) / ((detObj.brx - detObj.tlx) / (detObj.bry - detObj.tly))) : 1})`
                 }}>
                     {<canvas ref={canvasRef} style={{height: '100%'}}/>}
                 </Box>

@@ -124,9 +124,11 @@ const ObjectPage: FC = () => {
                      borderColor: 'divider',
                      position: 'relative'
                  }}>
-                <Box ref={imgContainer} height='96%' sx={{
-                    position: 'absolute', display: 'block',
-                    left: '50%', transform: 'translateX(-50%)'
+                <Box height='96%' sx={{
+                    position: 'absolute',
+                    display: 'block',
+                    left: '50%',
+                    transform: `translateX(-50%) scale(${detObj ? Math.min(1, (1170 / 716) / ((detObj.brx - detObj.tlx) / (detObj.bry - detObj.tly))) : 1})`
                 }}>
                     {imgUrl &&
                         <Tooltip title={`Bounding Box: ${[detObj?.tlx, detObj?.tly, detObj?.brx, detObj?.bry]}`}>

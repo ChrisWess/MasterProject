@@ -31,6 +31,7 @@ import {Label} from "../api/models/label";
 import {ReactJSXElement} from "@emotion/react/types/jsx-namespace";
 import HoverBox, {Highlighted} from "../components/HoverBox";
 import {fetchLabel} from "../object_annotator/LabelSelector";
+import {DetectedObject} from "../api/models/object";
 
 
 export const CONCEPT_COLORS = [
@@ -203,6 +204,7 @@ const AnnotationView: FC = () => {
     // global state (redux)
     const project: ProjectStats | undefined = useSelector((state: any) => state.mainPage.currProject);
     const idoc: ImageDocument | undefined = useSelector((state: any) => state.iDoc.document);
+    const detObj: DetectedObject | undefined = useSelector((state: any) => state.object.detObj);
     const imgUrl: string | undefined = useSelector((state: any) => state.iDoc.imgUrl);
     const objectLabel: Label | undefined = useSelector((state: any) => state.object.objectLabel);
     const annotation: Annotation | undefined = useSelector((state: any) => state.annotation.annotation);
@@ -567,8 +569,10 @@ const AnnotationView: FC = () => {
                      position: 'relative'
                  }}>
                 <Box height='93%' sx={{
-                    position: 'absolute', display: 'block',
-                    left: '50%', transform: 'translateX(-50%)'
+                    position: 'absolute',
+                    display: 'block',
+                    left: '50%',
+                    transform: `translateX(-50%) scale(${detObj ? Math.min(1, (1170 / 440) / ((detObj.brx - detObj.tlx) / (detObj.bry - detObj.tly))) : 1})`
                 }}>
                     {<canvas ref={canvasRef} style={{height: '100%'}}/>}
                     {showFeats && bboxs?.length > 0 && bboxs.flat()}

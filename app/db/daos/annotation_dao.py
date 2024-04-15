@@ -277,7 +277,6 @@ class AnnotationDAO(JoinableDAO):
         return self.to_response(anno) if generate_response else anno
 
     def _handle_subject_adjs(self, subj_concepts, concept_ids, mask, annotation, cidx):
-        # TODO: could use "and" instead of the last comma of the enumeration
         for i, concept in enumerate(subj_concepts, start=1):
             del self._field_check[concept['key']]
             adjs = concept['phraseWords'][:-concept['nounCount']]
@@ -289,9 +288,13 @@ class AnnotationDAO(JoinableDAO):
                     self._helper_list.append(',')
             concept_ids.append(concept['_id'])
             mask.extend((cidx,) * (2 * len(adjs) - 1))
-            if i < len(subj_concepts):
+            if i < len(subj_concepts) - 1:
                 self._helper_list.append(',')
                 annotation += ', '
+                mask.append(-1)
+            elif i == len(subj_concepts) - 1:
+                self._helper_list.append('and')
+                annotation += 'and '
                 mask.append(-1)
             else:
                 annotation += ' '
