@@ -340,9 +340,7 @@ class ObjectDAO(JoinableDAO):
     def update_label(self, obj_id, label_id):
         self.add_query("_id", obj_id)
         self.add_update('labelId', label_id)
-        now = datetime.now()
-        self._set_field_op['updatedAt'] = now
-        self.add_update('updatedAt', now)
+        self.add_update('updatedAt', datetime.now())
 
     def delete_all(self, generate_response=False, db_session=None):
         raise NotImplementedError

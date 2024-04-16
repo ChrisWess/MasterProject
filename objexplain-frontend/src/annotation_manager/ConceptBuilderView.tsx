@@ -11,12 +11,16 @@ import {
     removeSelectedConcept,
     setConceptEditIdx,
     setMode,
-    setNewAnnotation
+    setNewAnnotation,
+    switchAdj,
+    switchNoun
 } from "../reducers/annotationCreateSlice";
 import PhraseChip from "./PhraseChip";
 import {getRequest} from "../api/requests";
 import {Label} from "../api/models/label";
 import DeleteIcon from "@mui/icons-material/Delete";
+import {DragDropContext, Draggable} from 'react-beautiful-dnd';
+import StrictModeDroppable from "../components/StrictModeDroppable";
 
 
 interface ConceptBuilderProps {
@@ -54,8 +58,37 @@ const ConceptBuilderView: FC<ConceptBuilderProps> = ({value, index, setAlertCont
         </ListItem>
     }
 
+    const onDragEnd = (result: any) => {
+        if (!result.destination) return;
+
+        let sourceIdx = result.source.index
+        let destIdx = result.destination.index
+        let adjs = concAdjectives[conceptIdx];
+        let maxIdx: number
+        let isNoun: boolean
+        if (sourceIdx >= adjs.length) {
+            let nouns = concNouns[conceptIdx];
+            isNoun = true
+            sourceIdx = sourceIdx - adjs.length
+            destIdx = destIdx - adjs.length
+            maxIdx = nouns.length - 1
+        } else {
+            isNoun = false
+            maxIdx = adjs.length - 1
+        }
+        if (destIdx < 0) {
+            destIdx = 0
+        } else if (destIdx > maxIdx) {
+            destIdx = maxIdx
+        }
+        if (isNoun) {
+            dispatch(switchNoun([sourceIdx, destIdx]))
+        } else {
+            dispatch(switchAdj([sourceIdx, destIdx]))
+        }
+    };
+
     const conceptList = useMemo(() => {
-        // TODO: Chips in a concept should be draggable to change its position
         return (<List className="concepts" key="conceptList" sx={{p: 0}}>
             {!!conceptIdx && concAdjectives.slice(0, conceptIdx).map((adjectives, index) =>
                 unselectedListElement(adjectives, index))}
@@ -64,20 +97,45 @@ const ConceptBuilderView: FC<ConceptBuilderProps> = ({value, index, setAlertCont
                     <ListItemIcon key={'concEditIcon'} sx={{color: 'text.secondary'}}>
                         {conceptIdx + 1}
                     </ListItemIcon>
-                    <Box sx={{width: '100%'}}>
-                        {concAdjectives[conceptIdx].map(
-                            (token, index) => <PhraseChip key={'concChip' + index}
-                                                          token={token}
-                                                          phraseIdx={adjectiveIdxs[conceptIdx][index]}
-                                                          isNoun={false}
-                                                          handleDelete={() => dispatch(removeAdjectiveAt(index))}/>)}
-                        {concNouns[conceptIdx].map(
-                            (token, index) => <PhraseChip key={'concChip' + index}
-                                                          token={token}
-                                                          phraseIdx={nounIdxs[conceptIdx][index]}
-                                                          isNoun={true}
-                                                          handleDelete={() => dispatch(removeNounAt(index))}/>)}
-                    </Box>
+                    <DragDropContext onDragEnd={onDragEnd}>
+                        <StrictModeDroppable droppableId='concept-chips' direction='horizontal' type='chips'>
+                            {(provided) => (
+                                <Box sx={{width: '100%', maxWidth: '100%', display: 'flex', flexWrap: 'wrap'}}
+                                     ref={provided.innerRef} {...provided.droppableProps}>
+                                    {concAdjectives[conceptIdx].map(
+                                        (token, index) => <Draggable key={'dragAdj' + index}
+                                                                     draggableId={'dragAdj' + index}
+                                                                     index={index}>
+                                            {(provided) => (<div
+                                                {...provided.draggableProps}
+                                                {...provided.dragHandleProps}
+                                                ref={provided.innerRef}>
+                                                <PhraseChip key={'concChip' + index}
+                                                            token={token}
+                                                            phraseIdx={adjectiveIdxs[conceptIdx][index]}
+                                                            isNoun={false}
+                                                            handleDelete={() => dispatch(removeAdjectiveAt(index))}/>
+                                            </div>)}
+                                        </Draggable>)}
+                                    {concNouns[conceptIdx].map(
+                                        (token, index) => <Draggable key={'dragNoun' + index}
+                                                                     draggableId={'dragNoun' + index}
+                                                                     index={concAdjectives[conceptIdx].length + index}>
+                                            {(provided) => (<div
+                                                {...provided.draggableProps}
+                                                {...provided.dragHandleProps}
+                                                ref={provided.innerRef}>
+                                                <PhraseChip key={'concChip' + index}
+                                                            token={token}
+                                                            phraseIdx={nounIdxs[conceptIdx][index]}
+                                                            isNoun={true}
+                                                            handleDelete={() => dispatch(removeNounAt(index))}/>
+                                            </div>)}
+                                        </Draggable>)}
+                                    {provided.placeholder}
+                                </Box>)}
+                        </StrictModeDroppable>
+                    </DragDropContext>
                     <IconButton aria-label="comment" onClick={() => dispatch(removeSelectedConcept(conceptIdx))}>
                         <DeleteIcon sx={{color: 'text.secondary'}}/>
                     </IconButton>

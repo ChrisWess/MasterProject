@@ -81,7 +81,7 @@ class BaseDAO(AbstractDAO):
         "_push_each", "_pull_op", "_upd_ops_map", "_update_commands", "_helper_list", "_field_check",
         "_text_score_sorter", "_sort_list", "_projection_dict", "_match_agg_clause", "_group_by_agg", "_agg_group",
         "_grouping_flag", "_agg_sorter", "_agg_sort", "_agg_projection", "_agg_pipeline", "_index_definitions",
-        "_nested_get", "_array_filters", "_increment_op"
+        "_nested_get", "_array_filters", "_increment_op", "_nested_upd_loc"
     )
 
     GET = 0
@@ -176,6 +176,7 @@ class BaseDAO(AbstractDAO):
             #  (however data schema/validators will not be able to recognize them)
             if len(self._nested_path) == 1:
                 self._nested_path = None
+                self._nested_upd_loc = self._loc_prefix + '$[].'
                 self._push_loc = self._pull_loc = self.location
                 self._parent_prefix = ''
                 self._nested_get = self._dummy_nested_get
@@ -194,6 +195,7 @@ class BaseDAO(AbstractDAO):
             else:
                 self._parent_prefix = '.'.join(self._nested_path[:-1]) + '.'
                 self._nested_path = tuple(self._nested_path)
+                self._nested_upd_loc = '.$[].'.join(self._nested_path) + '.$[x].'
                 self._push_loc = self._parent_prefix + '$.' + self._nested_path[-1]
                 self._pull_loc = self._parent_prefix + '$[].' + self._nested_path[-1]
                 self._nested_get = self._true_nested_get
@@ -625,7 +627,7 @@ class BaseDAO(AbstractDAO):
 
     def add_update(self, doc_key, val, op_key="$set"):
         if self.location:
-            doc_key = self._loc_prefix + doc_key
+            doc_key = self._nested_upd_loc + doc_key
         if op_key in self._update_commands:
             upd_map = self._update_commands[op_key]
             upd_map[doc_key] = val
@@ -1283,8 +1285,11 @@ class BaseDAO(AbstractDAO):
                     for qfield, qval in query.items():
                         result['at'][qfield] = str(qval)
                     for updop, updvals in upd_cmd.items():
-                        upd_res_field = result['updatedTo'][updop] = {}
+                        upd_res_field = result['updatedTo'][updop[1:]] = {}
                         for updfield, val in updvals.items():
+                            if self.location:
+                                dot_idx = updfield.rindex('.')
+                                updfield = updfield[dot_idx + 1:]
                             upd_res_field[updfield] = str(val)
                 else:
                     result['at'] = deepcopy(query)

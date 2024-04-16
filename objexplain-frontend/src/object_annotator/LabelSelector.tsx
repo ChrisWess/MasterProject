@@ -145,15 +145,15 @@ const LabelSelect: FC<LabelSelectProps> = ({
                         {objectId: objId, label: labelValue, categories: selectedCategories})
                 }
                 if (data) {
-                    let newLabelId = data.result.updatedTo.objects.labelId;
-                    if (idoc && idoc.objects && objIdx) {
+                    let newLabelId = data.result.updatedTo.set.labelId;
+                    if (idoc && idoc.objects && objIdx !== undefined) {
                         let updObj = {...detObj, labelId: newLabelId}
                         let newObjs = [...idoc.objects?.slice(0, objIdx), updObj, ...idoc.objects?.slice(objIdx + 1)]
                         let newDoc = {...idoc, objects: newObjs}
                         dispatch(setObject(updObj))
                         dispatch(setDoc(newDoc))
                     }
-                    fetchLabel(newLabelId).then(label => label && dispatch(setObjectLabel(label)))
+                    fetchLabel(newLabelId).then(data => data && dispatch(setObjectLabel(data.result)))
                     setLabelValue('')
                     dispatch(resetLabelMap())
                     setSelectedCategories([])

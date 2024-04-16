@@ -161,6 +161,44 @@ export const newAnnotationPageSlice = createSlice({
             state.nouns = nounArr;
             state.nounIdxs = nidxs;
         },
+        switchAdj: (state, action: PayloadAction<[number, number]>) => {
+            let fromIdx = action.payload[0];
+            let toIdx = action.payload[1];
+            let adjArr = state.adjectives;
+            let aidxs = state.adjectiveIdxs;
+            let editIdx = state.conceptEditIdx;
+            let currAdjs = adjArr[editIdx]
+            let currIdxs = aidxs[editIdx]
+            let fromVal = currAdjs[fromIdx]
+            let fromValIdx = currIdxs[fromIdx]
+            let toVal = currAdjs[toIdx]
+            let toValIdx = currIdxs[toIdx]
+            currAdjs[toIdx] = fromVal
+            currAdjs[fromIdx] = toVal
+            currIdxs[toIdx] = fromValIdx
+            currIdxs[fromIdx] = toValIdx
+            state.adjectives[editIdx] = currAdjs
+            state.adjectiveIdxs[editIdx] = currIdxs;
+        },
+        switchNoun: (state, action: PayloadAction<[number, number]>) => {
+            let fromIdx = action.payload[0];
+            let toIdx = action.payload[1];
+            let nounArr = state.nouns;
+            let nidxs = state.nounIdxs;
+            let editIdx = state.conceptEditIdx;
+            let currNouns = nounArr[editIdx]
+            let currIdxs = nidxs[editIdx]
+            let fromVal = currNouns[fromIdx]
+            let fromValIdx = currIdxs[fromIdx]
+            let toVal = currNouns[toIdx]
+            let toValIdx = currIdxs[toIdx]
+            currNouns[toIdx] = fromVal
+            currNouns[fromIdx] = toVal
+            currIdxs[toIdx] = fromValIdx
+            currIdxs[fromIdx] = toValIdx
+            state.nouns[editIdx] = currNouns
+            state.nounIdxs[editIdx] = currIdxs;
+        },
         setConceptEditIdx: (state, action: PayloadAction<number>) => {
             state.conceptEditIdx = action.payload;
         },
@@ -314,7 +352,7 @@ export const {
     addFullConcepts, initAnnoSelectionFlags, markAnnoSelected, initConceptSelectionFlags,
     addSelectedConcept, removeSelectedConcept, selectConceptIdx, setSuggestedConcepts,
     pushSuggestedConcepts, setSuggestedAdjectives, setSuggestedNouns, setNewAnnotation,
-
+    switchAdj, switchNoun,
 } = newAnnotationPageSlice.actions;
 
 export default newAnnotationPageSlice.reducer;

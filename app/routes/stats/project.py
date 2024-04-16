@@ -26,6 +26,7 @@ def _trigger_updates():
 
 @application.route('/stats/project/suggestions', methods=['PUT'])
 def trigger_suggestion_update():
+    # TODO: make sure that only one thread is running at a time
     thread = Thread(target=_trigger_updates)
     thread.start()
     return 'started'
