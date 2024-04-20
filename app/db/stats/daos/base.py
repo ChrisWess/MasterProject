@@ -290,7 +290,7 @@ class MultiDimDocStatsDAO(CategoricalDocStatsDAO):
                  "_match_queries", "_match", "_project_agg", "_sort_list", "_sort_defs", "_sorting", "_skip",
                  "_limiter", "_agg_pipe")
 
-    def __init__(self, stat_coll, data_coll, stat_model, stat_agg_pipe, id_mapping, invalidate_after_sec=600):
+    def __init__(self, stat_coll, data_coll, stat_model, stat_agg_pipe, id_mapping, invalidate_after_sec=6000):
         super().__init__(stat_coll, data_coll, stat_model, stat_agg_pipe)
         # It is not always possible or very difficult to keep track which data dimension caused the invalidation
         # of a stat. Therefore, we only cache stats in a time-based manner here => Do not register these DAOs

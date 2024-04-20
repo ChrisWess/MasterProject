@@ -103,13 +103,14 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
             if curr_pos in np_pos_labels:
                 found = False
                 if word.lower_ == '-':
-                    if prev and prev.pos in adj_candidates or prev.pos in noun_candidates:
+                    if prev and ((prev.pos in adj_candidates and prev.lower_ != 'has') or prev.pos in noun_candidates):
                         split_token = prev
                 elif curr_pos in adj_candidates:
-                    found = True
-                    if start_idx is not None:
-                        end_idx = word.i
-                    self.adjs.append(word)
+                    if word.lower_ != 'has':
+                        found = True
+                        if start_idx is not None:
+                            end_idx = word.i
+                        self.adjs.append(word)
                 elif curr_pos in noun_candidates:
                     found = True
                     if start_idx is not None:
@@ -132,6 +133,9 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
             prev = word
         if end_idx:
             end_idx += 1
+        elif end_idx is None:
+            assert prev is not None
+            end_idx = prev.i
         self.noun_phrase_chunks.clear()
         filt_adjs = tuple(adj for adj in self.adjs if len(adj.text) > 1)
         if len(filt_adjs) == 0:
@@ -220,7 +224,7 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
             while idx >= until_idx:
                 word = doc[idx]
                 curr_pos = word.pos
-                if curr_pos in adj_candidates:
+                if curr_pos in adj_candidates and word.lower_ != 'has':
                     self.adjs.append(word)
                 elif curr_pos not in conj_pos_labels or word.text in final_punct:
                     break
@@ -242,7 +246,7 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
             while idx < line_end:
                 word = doc[idx]
                 curr_pos = word.pos
-                if curr_pos == ADJ or curr_pos == ADV:
+                if (curr_pos == ADJ or curr_pos == ADV) and word.lower_ != 'has':
                     self.adjs.append(word)
                 else:
                     break

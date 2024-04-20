@@ -205,8 +205,9 @@ class ConceptDAO(JoinableDAO):
     # @transaction
     def find_doc_or_add(self, noun_phrase, generate_response=False, db_session=None):
         # creates a new concept in the concepts collection
-        # TODO: what is the "vector" value of a span i.e. how is it computed?
-        #  Can we use the vector norm to query concepts?
+        # TODO: "feathered, long bird" would get the same key as "long bird feathers", because they have
+        #  the same lemmas. To specify which words are adjectives and which are nouns, they could be 1) marked
+        #  with an "a" or "n" after the index or 2) separate the indices by type and split them by e.g. a slash.
         # TODO: add method to add all concepts at once
         try:
             words = CorpusDAO().find_phrase_words_or_add(noun_phrase, db_session=db_session)

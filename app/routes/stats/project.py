@@ -24,9 +24,16 @@ def _trigger_updates():
     application.logger.info("Updated Tf-Idfs!")
 
 
+thread = None
+
+
 @application.route('/stats/project/suggestions', methods=['PUT'])
 def trigger_suggestion_update():
-    # TODO: make sure that only one thread is running at a time
-    thread = Thread(target=_trigger_updates)
-    thread.start()
-    return 'started'
+    # makes sure that only one thread is running at a time
+    global thread
+    if thread is None or not thread.is_alive():
+        thread = Thread(target=_trigger_updates)
+        thread.start()
+        return 'started'
+    else:
+        return 'running'
