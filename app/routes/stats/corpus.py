@@ -3,7 +3,7 @@ from bson.errors import InvalidId
 from flask import request, abort
 
 from app import application
-from app.db.stats.daos.anno_word_stats import CorpusTfIdfDAO
+from app.db.stats.daos.anno_word_stats import CorpusTfIdfDAO, WordOccurrenceDAO
 
 
 @application.route('/stats/corpus/tfIdf', methods=['GET'])
@@ -48,3 +48,8 @@ def find_noun_tf_idfs_by_label(label_id):
 @application.route('/stats/corpus/tfIdf', methods=['PUT'])
 def force_corpus_tf_idfs_update():
     return CorpusTfIdfDAO().update(force_update=True, generate_response=True)
+
+
+@application.route('/stats/corpus/count', methods=['GET'])
+def count_word_occurrence_in_classes():
+    return WordOccurrenceDAO().find_all_stats(generate_response=True, sort=[('occurrenceCount', -1)], limit=20)

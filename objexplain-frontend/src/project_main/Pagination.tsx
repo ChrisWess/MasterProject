@@ -1,4 +1,4 @@
-import {ChangeEvent, FC} from 'react';
+import {ChangeEvent, FC, useEffect} from 'react';
 import {Box, Button, Input, Typography} from "@mui/material";
 import {useDispatch, useSelector} from "react-redux";
 import './Pagination.css';
@@ -55,6 +55,12 @@ const Pagination: FC<PaginationProps> = ({pageText, setPageText, toPrevPage, toN
 
     let prevPageDisable = page <= 1
     let nextPageDisable = maxPage !== undefined && page >= maxPage
+
+    useEffect(() => {
+        if (maxPage !== undefined) {
+            toFirstPage()
+        }
+    }, [maxPage]);
 
     return (
         <Box sx={{display: 'flex', bottom: '5px', width: '99%'}}>

@@ -186,12 +186,31 @@ class ImgDocDAO(JoinableDAO):
             return result
 
     def search_thumbnails(self, page_idx, search_phrase, proj_id, generate_response=False, db_session=None):
-        self._projection_dict['score'] = self._meta_score
-        self._search_instructions['$search'] = search_phrase
-        self._query_matcher['$text'] = self._search_instructions
-        self.sort_by('score')
-        return self.load_thumbnails_paginated(page_idx, proj_id, generate_response=generate_response,
-                                              db_session=db_session)
+        assert page_idx > 0
+        try:
+            self.sort_by('score')
+            self.sort_by('createdAt')
+            self._skip_results = (page_idx - 1) * self._thumb_page_limit
+            self._projection_dict['score'] = self._meta_score
+            self._projection_dict['thumbnail'] = 1
+            self._projection_dict['name'] = 1
+            self._search_instructions['$search'] = search_phrase
+            self._query_matcher['$text'] = self._search_instructions
+            self._query_matcher['projectId'] = proj_id
+            result = self.collection.find(self._query_matcher, self._projection_dict, session=db_session)
+            result = result.sort(self._sort_list).skip(self._skip_results).limit(self._thumb_page_limit)
+            result = [(str(doc['_id']), doc['name'],
+                       encode_as_base64(fs.get(doc['thumbnail'], session=db_session).read())) for doc in result]
+            if generate_response:
+                total_thumbs = self.collection.count_documents(self._query_matcher)
+                n_pages = ceil(total_thumbs / self._thumb_page_limit)
+                return {"result": result, "numResults": len(result), "atPage": page_idx, "numPages": n_pages,
+                        "status": 200, 'model': 'base64img', 'isComplete': True}
+            else:
+                return result
+        finally:
+            self.clear_query()
+            self._projection_dict.clear()
 
     @dao_query()
     def unrolled(self, unroll_depth=2):

@@ -59,6 +59,8 @@ export const mainPageSlice = createSlice({
         },
         clearFilter: (state) => {
             state.projectFilter = undefined;
+            state.page = 1;
+            state.maxPage = undefined;
         },
     },
 });
