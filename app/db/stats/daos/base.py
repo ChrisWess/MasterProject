@@ -467,6 +467,10 @@ class CombinedCategoricalDocStatsDAO(CategoricalIntervalUpdateStatsDAO):
     def update(self, force_update=False, generate_response=False, db_session=None):
         if not force_update and not self.check_invalid(db_session):
             return
+        # TODO: don't delete all documents, but just update current documents, because otherwise,
+        #  the current documents can't be accessed before they are updated by new documents:
+        #  UpdateOne(doc, upsert=True)
+        #  Problem new doc needs to have the same ID as the current doc...
         self.collection.delete_many(self._fetch_stat_query, session=db_session)
         while self.collection.count_documents(self._fetch_stat_query, limit=1, session=db_session):
             sleep(0.2)
