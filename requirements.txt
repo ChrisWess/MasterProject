@@ -7,8 +7,8 @@ pydantic[email]==2.4.2
 pymongo==4.5.0
 spacy==3.7.2
 torch~=2.2.2
-transformers~=4.34.1
-Werkzeug~=3.0.0
+transformers~=4.40.2
+Werkzeug~=3.0.3
 environs~=9.5.0
 inflect~=7.0.0
 textblob~=0.17.1
@@ -19,3 +19,7 @@ flask-pymongo~=2.3.0
 flask-swagger~=0.2.14
 flask-swagger-ui~=4.11.1
 ultralytics~=8.1.35
+torchvision~=0.17.2
+matplotlib~=3.8.3
+scikit-learn~=1.4.2
+tqdm~=4.66.1

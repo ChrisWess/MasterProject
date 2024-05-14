@@ -467,23 +467,23 @@ class CombinedCategoricalDocStatsDAO(CategoricalIntervalUpdateStatsDAO):
     def update(self, force_update=False, generate_response=False, db_session=None):
         if not force_update and not self.check_invalid(db_session):
             return
-        # TODO: don't delete all documents, but just update current documents, because otherwise,
-        #  the current documents can't be accessed before they are updated by new documents:
-        #  UpdateOne(doc, upsert=True)
-        #  Problem new doc needs to have the same ID as the current doc...
-        self.collection.delete_many(self._fetch_stat_query, session=db_session)
-        while self.collection.count_documents(self._fetch_stat_query, limit=1, session=db_session):
-            sleep(0.2)
         generator = self._accumulator_gen()
         if generate_response:
             result = list(generator)
             if result:
                 try:
+                    res = None
                     for res in result:
-                        self._bulk_update.append(InsertOne(res))
+                        self._bulk_update.append(UpdateOne({'_id': res['_id']}, {'$set': res}, upsert=True))
                     self.collection.bulk_write(self._bulk_update, session=db_session)
+                    if res is not None:
+                        self._in_ids_op['$ne'] = res['updatedAt']
+                        self._fetch_stat_query['updatedAt'] = self._in_ids_op
+                        self.collection.delete_many(self._fetch_stat_query, session=db_session)
                 finally:
                     self._bulk_update.clear()
+                    self._in_ids_op.clear()
+                    self._fetch_stat_query.clear()
                 for res in result:
                     id_dims = res['_id']
                     for dim, val in id_dims.items():
@@ -492,13 +492,20 @@ class CombinedCategoricalDocStatsDAO(CategoricalIntervalUpdateStatsDAO):
                       'model': self.model.__name__, 'isComplete': True}
         else:
             try:
+                res = None
                 for res in generator:
-                    self._bulk_update.append(InsertOne(res))
+                    self._bulk_update.append(UpdateOne({'_id': res['_id']}, {'$set': res}, upsert=True))
                 if self._bulk_update:
                     self.collection.bulk_write(self._bulk_update, session=db_session)
+                if res is not None:
+                    self._in_ids_op['$ne'] = res['updatedAt']
+                    self._fetch_stat_query['updatedAt'] = self._in_ids_op
+                    self.collection.delete_many(self._fetch_stat_query, session=db_session)
                 result = len(self._bulk_update)
             finally:
                 self._bulk_update.clear()
+                self._in_ids_op.clear()
+                self._fetch_stat_query.clear()
         return result
 
 

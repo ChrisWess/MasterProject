@@ -148,9 +148,9 @@ const ConceptsController: FC = () => {
         if (objectLabel) {
             let labelId = objectLabel._id
             !adjectives && loadSuggestedAdjectives(labelId)
-                .then(data => data && dispatch(setSuggestedAdjectives(data.result.map((res: any) => res.word))))
+                .then(data => data && data.result.length && dispatch(setSuggestedAdjectives(data.result.map((res: any) => res.word))))
             !nouns && loadSuggestedNouns(labelId)
-                .then(data => data && dispatch(setSuggestedNouns(data.result.map((res: any) => res.word))))
+                .then(data => data && data.result.length && dispatch(setSuggestedNouns(data.result.map((res: any) => res.word))))
         }
     }, [objectLabel]);
 
@@ -158,7 +158,7 @@ const ConceptsController: FC = () => {
         if (objectLabel && concepts.length === 0) {
             setConceptPageIdx(0)
             loadSuggestedConcepts(objectLabel._id, 0)
-                .then(data => data && dispatch(setSuggestedConcepts(data.result.map((res: any) => res.concept))))
+                .then(data => data && data.result.length && dispatch(setSuggestedConcepts(data.result.map((res: any) => res.concept))))
         }
     }, [objectLabel, concepts]);
 

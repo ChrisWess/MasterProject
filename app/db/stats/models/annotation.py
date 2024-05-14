@@ -59,3 +59,18 @@ class TfIdfStat(StatsBase):
             "updatedAt": datetime.now()
         }
         json_schema_extra = {"example": _json_example}
+
+
+class TopImgConceptsStat(StatsBase):
+    label: ObjectId = Field(default=None)
+    topConcepts: list[ObjectId] = Field(default_factory=list, alias='topConcepts')
+
+    class Config:
+        _json_example = {
+            "_id": ObjectId("6560e23ce1a3e3df0863b6d8"),
+            "isValid": False,
+            "label": ObjectId("66097eb92cd30218c3c96494"),
+            'topConcepts': [ObjectId("65fffa22f3e9f8fe71cd9d20")],
+            "updatedAt": datetime.now()
+        }
+        json_schema_extra = {"example": _json_example}

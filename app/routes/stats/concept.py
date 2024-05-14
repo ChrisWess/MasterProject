@@ -6,7 +6,8 @@ from bson.errors import InvalidId
 from flask import request, abort
 
 from app import application
-from app.db.stats.daos.anno_concept_stats import ConceptTfIdfDAO, DocConceptCountVectorizerDAO, ConceptOccurrenceDAO
+from app.db.stats.daos.anno_concept_stats import ConceptTfIdfDAO, DocConceptCountVectorizerDAO, ConceptOccurrenceDAO, \
+    ImageConceptCountVectorizerDAO
 
 
 @application.route('/stats/concept/tfIdf', methods=['GET'])
@@ -37,6 +38,12 @@ def force_concept_tf_idfs_update():
 @application.route('/stats/concept/count', methods=['GET'])
 def count_concepts_by_label():
     return DocConceptCountVectorizerDAO().find_top_concepts_with_info(generate_response=True)
+
+
+@application.route('/stats/concept/imageConcepts', methods=['PUT'])
+def force_vectorize_image_concept_update():
+    ImageConceptCountVectorizerDAO().update(force_update=True)
+    return 'Updated Stats!'
 
 
 @application.route('/stats/concept/tfIdf2/label/<label_id>', methods=['GET'])

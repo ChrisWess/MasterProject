@@ -7,7 +7,7 @@ from app.db.daos.concept_dao import ConceptDAO
 from app.db.daos.label_dao import LabelDAO
 from app.db.stats.daos.base import CategoricalDocStatsDAO, MultiDimDocStatsDAO, CombinedCategoricalDocStatsDAO
 from app.db.stats.models.annotation import DocOccurrenceCountStat, TfIdfStat, \
-    VectorizedCountsStat, UnrolledConceptCountsStat
+    VectorizedCountsStat, UnrolledConceptCountsStat, TopImgConceptsStat
 
 
 class ConceptCountDAO(CategoricalDocStatsDAO):
@@ -202,3 +202,23 @@ class ConceptTfIdfDAO2(MultiDimDocStatsDAO):
         skip = page_idx * 15
         return self.find_by_dim_val('label', label_id, sort='tfIdf', skip=skip, limit=15,
                                     expand_dims='concept', generate_response=generate_response)
+
+
+class ImageConceptCountVectorizerDAO(CategoricalDocStatsDAO):
+    """ Counts the number of all concept occurrences for each image """
+
+    def __init__(self):
+        super().__init__('imgconceptcounts', 'images', TopImgConceptsStat,
+                         [
+                             {"$unwind": "$objects"},
+                             {"$unwind": "$objects.annotations"},
+                             {"$unwind": "$objects.annotations.conceptIds"},
+                             {"$group": {"_id": {"concept": "$objects.annotations.conceptIds",
+                                                 "objImage": "$objects._id"},
+                                         "count": {"$sum": 1},
+                                         "label": {"$first": "$objects.labelId"}}},
+                             {"$group": {"_id": "$_id.objImage", "topConcepts": {
+                                 "$topN": {"n": 10, "sortBy": {"count": -1}, "output": "$_id.concept"}},
+                                         "label": {"$first": "$label"}
+                                         }},
+                         ])

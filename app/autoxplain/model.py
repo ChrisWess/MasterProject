@@ -1,167 +1,169 @@
-import io
-import itertools
-import logging
-from collections import defaultdict
+from abc import ABC, abstractmethod
 
+import numpy as np
 import torch
-from transformers import BertTokenizer
-
-from app.autoxplain.base import util
-from app.autoxplain.base.preprocess import get_document
-
-# from transformers.models.bert import BasicTokenizer
-
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
-                    datefmt='%m/%d/%Y %H:%M:%S',
-                    level=logging.INFO)
-logger = logging.getLogger()
-
-SENTENCE_ENDERS = "!.?"
-SUBSCRIPT = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
-
-DOC_NAME = "<document_name>"
-
-MODEL_NAME = 'droc_incremental_no_segment_distance'
-WINDOW_SIZE = 384
+import torch.nn as nn
+import torchvision
+from torch.nn.utils.clip_grad import clip_grad_norm
+from torchvision.models import VGG19_Weights
 
 
-class ProdAnnotater:
-    def __init__(self, model_path, gpu_id=0, seed=None):
-        if torch.cuda.is_available():
-            self.gpu_id = gpu_id
-            self.device = torch.device('cpu' if gpu_id is None else f'cuda:{gpu_id}')
-        else:
-            self.gpu_id = None
-            self.device = torch.device('cpu')
+class BaseModel(nn.Module, ABC):
+    def __init__(self, device, clip_value=None, optimizer=torch.optim.Adam, criterion=None):
+        super().__init__()
+        self.optimizer = optimizer
+        self.criterion = criterion
+        self.device = None
+        self.clip_value = clip_value
+        self.model_on_device = False
+        self.set_device(device)
 
-        self.seed = seed
-        if seed:
-            util.set_seed(seed)
+    @abstractmethod
+    def forward(self, *args):
+        pass
 
-        self.config = util.initialize_config(MODEL_NAME, create_dirs=False)
-        self.model = IncrementalCorefModel(self.config, self.device)
-        self.model.to(self.device)
-        self.tensorizer = Tensorizer(self.config)
-        self.model.load_state_dict(torch.load(model_path, map_location=self.device))
-        logger.info(f'Loaded model from {model_path}')
-        self.model.eval()
-        # python -m spacy download de_core_news_md
-        self.spacy_tok = spacy.load("de_core_news_md")
-        # cls.basic_tokenizer = BasicTokenizer(do_lower_case=False)
-        self.tokenizer = BertTokenizer.from_pretrained(self.config['bert_tokenizer_name'])
-        self.tensorizer.long_doc_strategy = "keep"
+    @abstractmethod
+    def infer(self, *args):
+        pass
 
-    def preprocess(self, data):
-        """
-        Transform raw input into model input data.
-        """
-        # Take the input data and make it inference ready
-        if isinstance(data, str):
-            data = self.text_to_token_list(data)
-        document = get_document('_', data, 'german', WINDOW_SIZE, self.tokenizer, 'nested_list')
-        _, example = self.tensorizer.tensorize_example(document, is_training=False)[0]
-        token_map = self.tensorizer.stored_info['subtoken_maps']['_']
-        # Remove gold
-        tensorized = [torch.tensor(e) for e in example[:7]]
-        return tensorized, token_map, data
+    @abstractmethod
+    def step_train(self, *args):
+        pass
+
+    @abstractmethod
+    def step_eval(self, *args):
+        pass
+
+    def update_step(self, y_pred, target, loss=None):
+        self.optimizer.zero_grad()
+        if loss is None:
+            loss = self.criterion(y_pred, target)
+        loss.backward()
+        if self.clip_value is not None:
+            clip_grad_norm(self.parameters(), self.clip_value)
+        self.optimizer.step()
+        loss = loss.item() * target.shape[0]
+        y_pred = self._pred_fn(y_pred)
+        return loss, y_pred.detach().cpu()
+
+    def set_device(self, device):
+        # not sending model to device yet
+        if device is None:
+            device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        device = torch.device(device)
+        if device != self.device:
+            self.device = device
+            self.model_on_device = False
+
+    def to(self, *args, **kwargs):
+        super().to(*args, **kwargs)
+        if args or 'device' in kwargs:
+            self.model_on_device = True
+
+    def train(self, mode=True):
+        if not self.model_on_device:
+            self.to(self.device)
+        super().train(mode)
+
+    def setup_training(self, optimizer, criterion=nn.CrossEntropyLoss(), device=None):
+        self.optimizer = optimizer
+        if criterion is not None:
+            self.criterion = criterion
+        if device is not None:
+            self.set_device(device)
+
+    def save(self, save_path, metrics, **kwargs):
+        if save_path is None:
+            return
+        state_dict = {'model_state_dict': self.state_dict(), 'metrics': metrics}
+        state_dict.update(kwargs)
+        torch.save(state_dict, save_path)
+
+    def load(self, load_path):
+        if load_path is None:
+            return
+        state_dict = torch.load(load_path, map_location=self.device)
+        self.load_state_dict(state_dict['model_state_dict'])
+        return state_dict
+
+
+class BaseClassifier(BaseModel, ABC):
+    def __init__(self, num_classes, device, clip_value=None, optimizer=torch.optim.Adam, criterion=None):
+        super().__init__(device, clip_value, optimizer, criterion)
+        self.num_classes = num_classes
 
     @staticmethod
-    def postprocess(results, token_map, tokenized_sentences, output_mode):
-        # We only support a batch size of one!
-        span_starts, span_ends, mention_to_cluster_id, predicted_clusters = results
-        if output_mode == "raw":
-            # TODO: not outputting the correct coreferences, even tho model worked correctly
-            words = list(itertools.chain.from_iterable(tokenized_sentences))
-            for cluster_id, cluster in enumerate(predicted_clusters):
-                for pair in cluster:
-                    words[pair[0]] = "[" + words[pair[0]]
-                    words[pair[1]] = words[pair[1]] + "]" + str(cluster_id).translate(SUBSCRIPT)
-            text = " ".join(words)
-            # Pitiful attempt of fixing what whitespace tokenization removed
-            # but its only meant for direct human usage, so it should be fine.
-            for sentence_ender in SENTENCE_ENDERS + ",":
-                text = text.replace(" " + sentence_ender, sentence_ender)
-            return [text]
-        elif output_mode == "conll":
-            lines = [f"#begin document {DOC_NAME}"]
-            for sentence_id, sentence in enumerate(tokenized_sentences, 1):
-                for word_id, token in enumerate(sentence, 1):
-                    line = ["memory_file", str(sentence_id), str(word_id), token] + ["-"] * 9
-                    lines.append("\t".join(line))
-                lines.append("\n")
-            lines.append("#end document")
-            input_file = io.StringIO(
-                "\n".join(lines)
-            )
-            output_file = io.StringIO("")
-            predictions = {
-                DOC_NAME: predicted_clusters
-            }
-            token_maps = {
-                DOC_NAME: token_map
-            }
-            output_conll(input_file, output_file, predictions, token_maps, False)
-            return output_file.getvalue()
-        elif output_mode == "json":
-            # A lot of redundancy by the large amount of JSON keys
-            # TODO: optimize format, could make another output_mode="json_small" (perhaps like the following):
-            #   1) "tokens": list of all tokens
-            #   2) "clusters": like predicted_clusters_words (list:cluster_ids of list:mentions of list:mention_range)
-            cluster_member_ids = defaultdict(set)
-            predicted_clusters_words = []
-            for cluster_id, cluster in enumerate(predicted_clusters):
-                current_cluster = []
-                for pair in cluster:
-                    token_from = token_map[pair[0]]
-                    token_to = token_map[pair[1]]
-                    current_cluster.append((token_from, token_to))
-                    for i in range(token_from, token_to + 1):
-                        cluster_member_ids[cluster_id].add(i)
-                predicted_clusters_words.append(current_cluster)
+    def determine_bin(y_hat, thresh=0):
+        return torch.where(y_hat > thresh, 1, 0)
 
-            total_word_id = 0
-            lines = []
-            for sentence_id, sentence in enumerate(tokenized_sentences):
-                for word_id, token in enumerate(sentence):
-                    line = {'sentence': str(sentence_id + 1), 'word': str(word_id + 1), 'token': token}
-                    for cluster_id, tok_id_set in cluster_member_ids.items():
-                        if total_word_id in tok_id_set:
-                            line['cluster_id'] = cluster_id
-                            for mention_id, mention in enumerate(predicted_clusters_words[cluster_id]):
-                                if mention[0] <= total_word_id <= mention[1]:
-                                    line['mention_id'] = mention_id
-                            break
-                    lines.append(line)
-                    total_word_id += 1
-            return {'tokens': tokenized_sentences, 'clusters': lines}
-        else:
-            predicted_clusters_words = []
-            for cluster in predicted_clusters:
-                current_cluster = []
-                for pair in cluster:
-                    current_cluster.append((token_map[pair[0]], token_map[pair[1]]))
-                predicted_clusters_words.append(current_cluster)
-            if output_mode == "json_small":
-                return {'tokens': tokenized_sentences, 'clusters': predicted_clusters_words}
-            else:
-                return predicted_clusters_words
+    @staticmethod
+    def determine_multi(y_hat):
+        return torch.argmax(y_hat, dim=1)
 
-    def predict(self, data, output_mode='raw', **kwargs):
-        assert output_mode != "raw" or isinstance(data, str)
-        in_data, token_map, tokenized_sentences = self.preprocess(data)
-        marshalled_data = [d.to(self.device) for d in in_data]
+    def infer(self, x, thresh=0, lengths=None):
         with torch.no_grad():
-            results, probs = self.model(*marshalled_data, **kwargs)
-        result = self.postprocess(results, token_map, tokenized_sentences, output_mode)
-        if isinstance(result, dict):
-            result['probs'] = probs
-            return result
-        else:
-            return {'clusters': result, 'probs': probs}
+            x = torch.atleast_2d(torch.LongTensor(x)).to(self.device)
+            lengths = torch.LongTensor(lengths)
+            y_hat = self(x, lengths)
+            if self.num_classes == 2:
+                return self.determine_bin(y_hat, thresh)
+            else:
+                return self.determine_multi(y_hat)
 
 
-model = ProdAnnotater("app/coref/base/model_saves/model_droc_incremental_no_segment_distance_May02_17-32-58_1800.bin")
+class CCNN(BaseClassifier):
+    def __init__(self, num_concepts, num_classes, device=None, clip_value=None, optimizer=torch.optim.Adam,
+                 word_vec_size=50, embeds_size=40, dropout_rate=0.5):
+        super(CCNN, self).__init__(num_classes, device, clip_value, optimizer, nn.CrossEntropyLoss())
+        self.cls_indicator_vectors = torch.tensor(
+            np.load('app/autoxplain/base/data/class_indicator_vectors.npy').astype(np.float32) * 0.1)
+        self._vgg_weights = VGG19_Weights.DEFAULT
+        self._vgg_preproc = self._vgg_weights.transforms()
+        self.head = torchvision.models.vgg19(self._vgg_weights).features
+        self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.concept_kernels = nn.Conv2d(512, num_concepts, kernel_size=1)
+        self.dropout = nn.Dropout(p=dropout_rate)
+        self.v_e_converter = nn.Linear(351, embeds_size)  # visual embedding layer
+        self.w_e_converter = nn.Linear(word_vec_size, embeds_size)  # word embedding layer
+        self.classifier = nn.Linear(num_concepts, num_classes)
+        with torch.no_grad():
+            # initialize classifier layer from class indicators, which
+            # allows only all possible concepts for a class as outputs.
+            self.classifier.weight.copy_(self.cls_indicator_vectors.T)
 
-if __name__ == '__main__':
-    res = model.predict("TODO", "json")
-    print(res)
+    @staticmethod
+    def global_avg_pool(x: torch.Tensor) -> torch.Tensor:
+        # Global average pooling over axes Width and Height
+        return torch.mean(x, dim=(2, 3))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self._vgg_preproc(x)
+        x = self.head(x)
+        x = self.maxpool(x)
+        print(x.shape)
+        x = self.concept_kernels(x)
+        print(x.shape)
+        x = self.dropout(x)
+        exit()
+        return x
+
+    def classify(self, x: torch.Tensor) -> torch.Tensor:
+        return self.classifier(x)
+
+    def combine_loss(self, y_hat: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        pass  # TODO: combine the different CCNN losses and use this as criterion
+
+    def step_train(self, x, y):
+        x = x.to(self.device, torch.float32)
+        y = y.to(self.device, self._label_dtype)
+        y_pred = self.classify(self.global_avg_pool(self(x)))
+        return self.update_step(y_pred, y)
+
+    def step_eval(self, x, y):
+        x = x.to(self.device, torch.float32)
+        y = y.to(self.device, self._label_dtype)
+        y_hat = self(x)
+        loss = self.criterion(y_hat, y)
+        loss = loss.item() * y.shape[0]
+        pred = self._pred_fn(y_hat)
+        return loss, pred.cpu()
