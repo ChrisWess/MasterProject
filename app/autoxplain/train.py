@@ -10,6 +10,7 @@ from gridfs import GridFS
 from pymongo import MongoClient
 from sklearn.metrics import precision_recall_fscore_support, classification_report
 from torch.utils.data import Dataset, DataLoader
+from torchvision.models import VGG19_Weights
 from torchvision.transforms import v2, InterpolationMode
 
 import config
@@ -22,10 +23,12 @@ class CUBDataset(Dataset):
         (config.Production if 'PRODUCTION' in os.environ else config).Debug.MONGODB_DATABASE_URI).xplaindb
     fs = GridFS(db_client)
     _query = {}
+    _batch_fetch = {}
     _projection = {}
 
-    def __init__(self, classes, img_indicators, concept_embeddings,
-                 apply_transforms=True, num_concepts_per_img=3):
+    def __init__(self, classes, img_indicators, concept_embeddings, apply_transforms=True, num_concepts_per_img=3):
+        # TODO: allow to skip every 10th image from the dataset and use these in validation
+        #   Maybe just allow to 1) skip every 10th and 2) use a custom list of img_ids (containing every 10th img)
         self.classes = classes
         self.img_ids = tuple(img_indicators.keys())  # defining the indices of the image dataset
         self.img_indicators = img_indicators  # mapping from Image IDs to tuple of one-hot vector and class idx
@@ -33,21 +36,18 @@ class CUBDataset(Dataset):
         self.num_concepts_per_img = num_concepts_per_img
         self.convert_and_crop = v2.Compose([
             v2.PILToTensor(),
-            v2.ToDtype(torch.float32),
-            v2.RandomResizedCrop(size=(448, 448), antialias=True)
+            v2.ToDtype(torch.uint8),
+            v2.RandomCrop(size=(448, 448), pad_if_needed=True)
         ])
         self.transforms = v2.RandomChoice([
             v2.RandomHorizontalFlip(p=1),
-            v2.RandomRotation(degrees=90, interpolation=InterpolationMode.BILINEAR),
-            self.gauss_noise_tensor,
-            v2.ColorJitter(contrast=5.),
-            v2.ColorJitter(saturation=5.),
-            v2.ColorJitter(brightness=5.),
+            v2.RandomRotation(degrees=45, interpolation=InterpolationMode.BILINEAR),
+            v2.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 2)),
+            v2.ColorJitter(contrast=2.5),
+            v2.ColorJitter(saturation=2.5),
+            v2.ColorJitter(brightness=2.5),
         ]) if apply_transforms else None
-
-    @staticmethod
-    def gauss_noise_tensor(img):
-        return img * torch.randn_like(img)
+        self._vgg_transforms = VGG19_Weights.DEFAULT.transforms()
 
     @staticmethod
     def from_file(cls_fname, img_indic_fname, concept_vecs_fname, base_dir=None):
@@ -88,30 +88,29 @@ class CUBDataset(Dataset):
         self._query['_id'] = ObjectId(self.classes[cls_idx])
         return self.db_client.labels.find_one(self._query)
 
-    def __getitem__(self, idx):
-        img_id = self.img_ids[idx]
-        img_concept_embed, cls_idx = self.img_indicators[img_id]
+    def __getitem__(self, idxs):
         self._query.clear()
-        self._query['objects._id'] = ObjectId(img_id)
+        self._batch_fetch['$in'] = [ObjectId(self.img_ids[idx]) for idx in idxs]
+        self._query['objects._id'] = self._batch_fetch
         self._projection['image'] = 1
-        # TODO: crop the image to include only the part of the object BBox
-        img_doc = self.db_client.images.find_one(self._query, self._projection)['image']
-        img = Image.open(BytesIO(self.fs.get(img_doc).read()))
+        self._projection['objects._id'] = 1
+        # TODO: crop the images to include only the part of the object BBox
+        img_docs = self.db_client.images.find(self._query, self._projection)
+        imgs = []
+        cls_idxs = []
+        for doc in img_docs:
+            imgs.append(self.convert_and_crop(Image.open(BytesIO(self.fs.get(doc['image']).read()))))
+            obj_id = str(doc['objects'][0]['_id'])
+            cls_idxs.append(torch.tensor(self.img_indicators[obj_id][1], dtype=torch.int64))
         self._query.clear()
+        self._batch_fetch.clear()
         self._projection.clear()
-        img_arr = self.convert_and_crop(img)
+        img_arr = torch.stack(imgs)
         if self.transforms:
             img_arr = self.transforms(img_arr)
-        # TODO: get the concept embedding matrix. Necessary?
-        #  If yes, Concat the concept vectors from the positions, indicated by the one-hot vectors, into a matrix
-        #  with self.num_concepts rows. If the image has less concepts assigned, fill the rest of the matrix with zeros.
-        return img_arr, cls_idx  # , img_concept_embed
-
-
-def create_shuffled_default_dataloader(batch_size):
-    ds = CUBDataset.from_file('class_ids.txt', 'image_indicator_vectors.npy',
-                              'concept_word_phrase_vectors.npy', 'app/autoxplain/base/data')
-    return DataLoader(ds, batch_size=batch_size, shuffle=True)
+        # finally apply VGG19 transforms
+        img_arr = self._vgg_transforms(img_arr)
+        return img_arr, torch.stack(cls_idxs)  # , img_concept_embed
 
 
 class ClassifierTrainer(Trainer):
@@ -154,12 +153,17 @@ class ClassifierTrainer(Trainer):
                 file.write(f'{stats}\n')
 
 
-def test_classify(eps, lrs, load_path=None):
-    dset = CUBDataset.from_file('class_ids.txt', 'image_indicator_vectors.npy',
-                                'concept_word_phrase_vectors.npy', 'app/autoxplain/base/data')
+def run_ccnn_training(eps, lrs, load_path=None):
+    dset_args = ('class_ids.txt', 'image_indicator_vectors.npy',
+                 'concept_word_phrase_vectors.npy', 'app/autoxplain/base/data')
+    dset = CUBDataset.from_file(*dset_args)
+    sampler = torch.utils.data.sampler.BatchSampler(
+        torch.utils.data.sampler.RandomSampler(dset),
+        batch_size=32,
+        drop_last=False)
     # val_dset = CUBDataset(...)
-    tdl = DataLoader(dset, batch_size=32, num_workers=2)
-    # vdl = DataLoader(val_dset, batch_size=256, num_workers=2)
+    tdl = DataLoader(dset, sampler=sampler, num_workers=3)
+    # vdl = DataLoader(val_dset, batch_size=64, num_workers=2)
 
     net = CCNN(dset.num_concepts, dset.num_classes)
     trainr = ClassifierTrainer(net, tdl, load_path=load_path)

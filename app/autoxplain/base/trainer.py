@@ -233,8 +233,11 @@ class Trainer(ABC):
         return F.l1_loss(pred, y).item() * y.shape[0]
 
     @staticmethod
-    def confusions(y, pred):
-        return confusion_matrix(y, pred)
+    def confusions(num_labels):
+        def func(y_true, y_pred):
+            return confusion_matrix(y_true, y_pred, labels=tuple(range(num_labels)))
+
+        return func
 
     @staticmethod
     def _init_confusion(last_state=None):
@@ -244,7 +247,7 @@ class Trainer(ABC):
     def add_confusion_metric(self, num_classes, stages=None):
         for state in self.metric_states.values():
             state['confusions'] = np.zeros((num_classes, num_classes), dtype=int)
-        self.add_metric_func('confusions', self.confusions, stages, None, self._init_confusion, False)
+        self.add_metric_func('confusions', self.confusions(num_classes), stages, None, self._init_confusion, False)
 
     def start_training(self, epochs, lrs, validate=True, evaluate=True, **kwargs):
         overwrite = kwargs['overwrite'] if 'overwrite' in kwargs else True
@@ -313,6 +316,10 @@ class Trainer(ABC):
         epoch_iter.set_postfix_str(f'{postfix}validating...')
         with torch.no_grad():
             for x, y, *z in self.val_dl:
+                if x.ndim > 4:
+                    x = torch.squeeze(x, dim=0)
+                if y.ndim > 1:
+                    y = y.reshape(-1)
                 loss, pred = self.model.step_eval(x, y, *z)
                 self._add_metric_batch(loss, y, pred, metstage)
                 c = c % 3 + 1
@@ -323,6 +330,7 @@ class Trainer(ABC):
             pass  # TODO: make option to show plot(s) at the end of validation
 
     def _train(self, epochs=10, lr=0.001, print_each=5, validate=True, **kwargs):
+        validate = validate and self.val_dl is not None
         parameters = filter(lambda p: p.requires_grad, self.model.parameters())
         device = kwargs.pop('device', None)
         val_plot = kwargs.pop('plot', False)
@@ -350,6 +358,10 @@ class Trainer(ABC):
             self.model.train()
             start = perf_counter()
             for j, (x, y, *z) in enumerate(self.train_dl, start=1):
+                if x.ndim > 4:
+                    x = torch.squeeze(x, dim=0)
+                if y.ndim > 1:
+                    y = y.reshape(-1)
                 loss, pred = self.model.step_train(x, y, *z)
                 self._add_metric_batch(loss, y, pred, metstage)
                 epoch_iter.set_postfix_str(f"{postfix}avg step time: {(perf_counter() - start) / j:.3f}")
@@ -357,8 +369,9 @@ class Trainer(ABC):
             if validate:
                 self._validate(epoch_iter, postfix, val_plot)
             if i % print_each == 0:
+                print_stage = 'val' if validate else 'train'
                 run_id = self.train_run_id
-                postfix = ' | '.join(f'val {key} {self.metrics["val"][run_id][key][-1]:.3f}'
+                postfix = ' | '.join(f'{print_stage} {key} {self.metrics[print_stage][run_id][key][-1]:.3f}'
                                      for key in self.evaluators if key not in self.metrics_excluded)
                 postfix = f"{postfix} | "
                 epoch_iter.set_postfix_str(postfix[:-3])

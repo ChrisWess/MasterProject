@@ -1,8 +1,8 @@
 from app import application
-from app.autoxplain.train import test_classify
+from app.autoxplain.train import run_ccnn_training
 
 
 @application.route('/train', methods=['GET'])
 def trigger_train_model():
-    test_classify(5, 0.0001)
+    run_ccnn_training(5, 0.0001)
     return 'done'

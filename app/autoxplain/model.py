@@ -91,6 +91,7 @@ class BaseClassifier(BaseModel, ABC):
     def __init__(self, num_classes, device, clip_value=None, optimizer=torch.optim.Adam, criterion=None):
         super().__init__(device, clip_value, optimizer, criterion)
         self.num_classes = num_classes
+        self._pred_fn = self.determine_bin if self.num_classes == 2 else self.determine_multi
 
     @staticmethod
     def determine_bin(y_hat, thresh=0):
@@ -117,10 +118,12 @@ class CCNN(BaseClassifier):
         super(CCNN, self).__init__(num_classes, device, clip_value, optimizer, nn.CrossEntropyLoss())
         self.cls_indicator_vectors = torch.tensor(
             np.load('app/autoxplain/base/data/class_indicator_vectors.npy').astype(np.float32) * 0.1)
-        self._vgg_weights = VGG19_Weights.DEFAULT
-        self._vgg_preproc = self._vgg_weights.transforms()
-        self.head = torchvision.models.vgg19(self._vgg_weights).features
+        # TODO: option to use own saved weights from previous training
+        #  (otherwise full VGG19 weights with fully connected layers need to be saved to disk)
+        self.num_concepts = num_concepts
+        self.head = torchvision.models.vgg19(VGG19_Weights.DEFAULT).features
         self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.pre_concept_kernels = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
         self.concept_kernels = nn.Conv2d(512, num_concepts, kernel_size=1)
         self.dropout = nn.Dropout(p=dropout_rate)
         self.v_e_converter = nn.Linear(351, embeds_size)  # visual embedding layer
@@ -137,14 +140,12 @@ class CCNN(BaseClassifier):
         return torch.mean(x, dim=(2, 3))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self._vgg_preproc(x)
         x = self.head(x)
         x = self.maxpool(x)
-        print(x.shape)
+        x = self.pre_concept_kernels(x)
+        x = self.maxpool(x)
         x = self.concept_kernels(x)
-        print(x.shape)
         x = self.dropout(x)
-        exit()
         return x
 
     def classify(self, x: torch.Tensor) -> torch.Tensor:
@@ -155,13 +156,13 @@ class CCNN(BaseClassifier):
 
     def step_train(self, x, y):
         x = x.to(self.device, torch.float32)
-        y = y.to(self.device, self._label_dtype)
+        y = y.to(self.device, torch.int64)
         y_pred = self.classify(self.global_avg_pool(self(x)))
         return self.update_step(y_pred, y)
 
     def step_eval(self, x, y):
         x = x.to(self.device, torch.float32)
-        y = y.to(self.device, self._label_dtype)
+        y = y.to(self.device, torch.int64)
         y_hat = self(x)
         loss = self.criterion(y_hat, y)
         loss = loss.item() * y.shape[0]
