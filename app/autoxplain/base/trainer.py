@@ -12,6 +12,7 @@ import torch
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -249,7 +250,7 @@ class Trainer(ABC):
             state['confusions'] = np.zeros((num_classes, num_classes), dtype=int)
         self.add_metric_func('confusions', self.confusions(num_classes), stages, None, self._init_confusion, False)
 
-    def start_training(self, epochs, lrs, validate=True, evaluate=True, **kwargs):
+    def start_training(self, epochs, lrs, validate=True, evaluate=True, scheduler_kwargs=None, **kwargs):
         overwrite = kwargs['overwrite'] if 'overwrite' in kwargs else True
         if self.train_run_id < 0 or 'new_run' in kwargs and kwargs['new_run']:
             self.finish_run(True, overwrite)
@@ -269,9 +270,9 @@ class Trainer(ABC):
             elif not isinstance(epochs, Sized) and isinstance(lrs, Sized):
                 epochs = [epochs] * len(lrs)
             for ep, lr in zip(epochs, lrs):
-                self._train(ep, lr, print_each, validate)
+                self._train(ep, lr, print_each, validate, scheduler_kwargs)
         else:
-            self._train(epochs, lrs, print_each, validate)
+            self._train(epochs, lrs, print_each, validate, scheduler_kwargs)
         if evaluate:
             self.run_evaluation(kwargs['stats_fname'] if 'stats_fname' in kwargs else "stat_history.csv",
                                 overwrite=overwrite)
@@ -329,7 +330,7 @@ class Trainer(ABC):
             epochs = self.train_epochs()
             pass  # TODO: make option to show plot(s) at the end of validation
 
-    def _train(self, epochs=10, lr=0.001, print_each=5, validate=True, **kwargs):
+    def _train(self, epochs=10, lr=0.001, print_each=5, validate=True, scheduler_kwargs=None, **kwargs):
         validate = validate and self.val_dl is not None
         parameters = filter(lambda p: p.requires_grad, self.model.parameters())
         device = kwargs.pop('device', None)
@@ -346,6 +347,12 @@ class Trainer(ABC):
                     optimizer = type(self.model.optimizer)
             optimizer = optimizer(parameters, lr=lr, **kwargs)
             self.model.setup_training(optimizer, criterion, device=device)
+            if scheduler_kwargs is not None:
+                if 'type' in scheduler_kwargs:
+                    scheduler_type = scheduler_kwargs['type']
+                else:
+                    scheduler_type = StepLR
+                self.model.add_lr_scheduler(scheduler_type, **scheduler_kwargs)
         else:
             assert self.model.optimizer is not None
             if device is not None:

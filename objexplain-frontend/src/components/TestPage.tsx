@@ -78,9 +78,9 @@ const TestPage: FC = ({}) => {
                 bboxBrx: 200, bboxBry: 200,
                 label: 0,
                 annotations: [
-                    "this is a bird with black feathers and a grey head.",
+                    "this is a bird with black feathers and a grey conv_base.",
                     "this bird is black with grey and has a long, pointy beak.",
-                    "a medium-sized bird with black feathers and a gray head."
+                    "a medium-sized bird with black feathers and a gray conv_base."
                 ]
             },
         );
@@ -98,7 +98,7 @@ const TestPage: FC = ({}) => {
                 bboxBrx: 300, bboxBry: 300,
                 label: 0,
                 annotations: [
-                    "The gray bird has a light grey head and grey webbed feet.",
+                    "The gray bird has a light grey conv_base and grey webbed feet.",
                     "A large flying bird with and all grey body, long dark wings, webbed feet, and a long sharp bill.",
                     "This bird has wings that are brown and has a long bill",
                 ]

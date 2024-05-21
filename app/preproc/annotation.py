@@ -175,7 +175,7 @@ class DefaultAnnotationPreprocesser(AnnotationPreprocesser):
             #  because in this work, they almost always refer to the object in question!
             #  => Can spacy show to which noun an adjective refers to?
             # TODO: Join noun phrases if they belong to each other (with e.g. "and/or" => "white belly and breast")
-            #  => should also be able to handle enumerations (e.g. black wings, beak, back and head): make adj and
+            #  => should also be able to handle enumerations (e.g. black wings, beak, back and conv_base): make adj and
             #  noun pairs from this like (black wings), (black beak) etc.
             #  "beak" should be able to refer to the concept "black beak", although it takes up only 1 token
             #  in the annotation text.

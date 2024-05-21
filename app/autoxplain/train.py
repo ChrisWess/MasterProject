@@ -9,6 +9,7 @@ from bson import ObjectId
 from gridfs import GridFS
 from pymongo import MongoClient
 from sklearn.metrics import precision_recall_fscore_support, classification_report
+from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import Dataset, DataLoader
 from torchvision.models import VGG19_Weights
 from torchvision.transforms import v2, InterpolationMode
@@ -32,7 +33,7 @@ class CUBDataset(Dataset):
         self.classes = classes
         self.img_ids = tuple(img_indicators.keys())  # defining the indices of the image dataset
         self.img_indicators = img_indicators  # mapping from Image IDs to tuple of one-hot vector and class idx
-        self.concept_embeddings = concept_embeddings
+        self.concept_embeddings = torch.tensor(concept_embeddings, dtype=torch.float32)
         self.num_concepts_per_img = num_concepts_per_img
         self.convert_and_crop = v2.Compose([
             v2.PILToTensor(),
@@ -98,10 +99,13 @@ class CUBDataset(Dataset):
         img_docs = self.db_client.images.find(self._query, self._projection)
         imgs = []
         cls_idxs = []
+        img_concept_indicators = []
         for doc in img_docs:
             imgs.append(self.convert_and_crop(Image.open(BytesIO(self.fs.get(doc['image']).read()))))
             obj_id = str(doc['objects'][0]['_id'])
-            cls_idxs.append(torch.tensor(self.img_indicators[obj_id][1], dtype=torch.int64))
+            img_infos = self.img_indicators[obj_id]
+            cls_idxs.append(torch.tensor(img_infos[1], dtype=torch.int64))
+            img_concept_indicators.append(torch.tensor(img_infos[0], dtype=torch.float32))
         self._query.clear()
         self._batch_fetch.clear()
         self._projection.clear()
@@ -110,7 +114,7 @@ class CUBDataset(Dataset):
             img_arr = self.transforms(img_arr)
         # finally apply VGG19 transforms
         img_arr = self._vgg_transforms(img_arr)
-        return img_arr, torch.stack(cls_idxs)  # , img_concept_embed
+        return img_arr, torch.stack(cls_idxs), torch.stack(img_concept_indicators), self.concept_embeddings
 
 
 class ClassifierTrainer(Trainer):
@@ -153,7 +157,25 @@ class ClassifierTrainer(Trainer):
                 file.write(f'{stats}\n')
 
 
-def run_ccnn_training(eps, lrs, load_path=None):
+class CCNNTrainer(ClassifierTrainer):
+    def __init__(self, model, train_dataset, val_dataset=None, test_dataset=None, base_dir='model_save',
+                 data_dir_name='base/data', class_names=None, **kwargs):
+        super().__init__(model, train_dataset, val_dataset, test_dataset, base_dir,
+                         data_dir_name, class_names, **kwargs)
+        assert isinstance(model, CCNN)
+        self.scheduler_kwargs = {'type': ExponentialLR, 'step_every': 10000, 'gamma': 0.96}
+
+    def start_training(self, epochs, lrs, validate=True, evaluate=True, **kwargs):
+        return super().start_training(epochs, lrs, validate, evaluate, self.scheduler_kwargs, **kwargs)
+
+    def set_vgg_base_frozen(self, freeze=False, freeze_concept_filters=False):
+        if freeze:
+            self.model.freeze_conv_base(freeze_concept_filters)
+        else:
+            self.model.unfreeze_conv_base()
+
+
+def run_ccnn_training(lr, load_path=None):
     dset_args = ('class_ids.txt', 'image_indicator_vectors.npy',
                  'concept_word_phrase_vectors.npy', 'app/autoxplain/base/data')
     dset = CUBDataset.from_file(*dset_args)
@@ -166,8 +188,17 @@ def run_ccnn_training(eps, lrs, load_path=None):
     # vdl = DataLoader(val_dset, batch_size=64, num_workers=2)
 
     net = CCNN(dset.num_concepts, dset.num_classes)
-    trainr = ClassifierTrainer(net, tdl, load_path=load_path)
-    trainr.start_training(eps, lrs)
+    trainr = CCNNTrainer(net, tdl, load_path=load_path)
+    # Train newly added layers first
+    trainr.set_vgg_base_frozen(True)
+    trainr.start_training(20, lr)
+    # Fine-tune all the variables in the network
+    lr *= 0.1
+    trainr.set_vgg_base_frozen(False)
+    trainr.start_training(50, lr)
+    # Finally fine-tune the fully connected layer in isolation
+    trainr.set_vgg_base_frozen(False, True)
+    trainr.start_training(20, lr)
 
 
 def main():
