@@ -128,7 +128,7 @@ class CCNN(BaseClassifier):
                  word_vec_size=50, embeds_size=40, dropout_rate=0.5, lambda_arg=0.4):
         super(CCNN, self).__init__(num_classes, device, clip_value, optimizer, nn.CrossEntropyLoss(reduction='none'))
         self.cls_indicator_vectors = torch.tensor(
-            np.load('app/autoxplain/base/data/class_indicator_vectors.npy').astype(np.float32) * 0.1)
+            np.load('app/autoxplain/base/data/class_indicator_vectors.npy').astype(np.float32), device=self.device)
         # TODO: option to use own saved weights from previous training
         #  (otherwise full VGG19 weights with fully connected layers need to be saved to disk)
         self.num_concepts = num_concepts
@@ -146,7 +146,7 @@ class CCNN(BaseClassifier):
         with torch.no_grad():
             # initialize classifier layer from class indicators, which
             # allows only all possible concepts for a class as outputs.
-            self.classifier.weight.copy_(self.cls_indicator_vectors.T)
+            self.classifier.weight.copy_(self.cls_indicator_vectors.T * 0.1)
 
     def freeze_conv_base(self, freeze_concept_filters=False):
         for param in self.conv_base.parameters():
@@ -229,16 +229,17 @@ class CCNN(BaseClassifier):
         loss = self.lambda_arg * interpr_loss + class_loss
         return self.update_step(y_pred, y, loss.mean())
 
-    def step_train_fc_layers(self, x, y, img_indic):
-        # TODO: train the fully-connected layers
+    def step_train_fc_layers(self, x, y, *_):
+        # Train the fully-connected layer in isolation
         x = x.to(self.device, torch.float32)
         y = y.to(self.device, torch.int64)
 
         y_pred = self.classify(self.global_avg_pool(self(x)))
         class_loss = self.criterion(y_pred, y)
 
-        fc_total_loss = class_loss.mean() + tf.reduce_mean(
-            tf.abs(tf.multiply((1 - class_indicator_vectors_tensor), fc_w)))
+        fc_total_loss = class_loss.mean()
+        fc_total_loss = fc_total_loss + torch.abs((1 - self.cls_indicator_vectors) * self.classifier.weight.T).mean()
+        return self.update_step(y_pred, y, fc_total_loss)
 
     def step_eval(self, x, y):
         x = x.to(self.device, torch.float32)

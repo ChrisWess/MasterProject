@@ -48,6 +48,8 @@ class Trainer(ABC):
             self.model.setup_training(**kwargs)
         base_dir = Path(base_dir)
         base_dir.mkdir(parents=True, exist_ok=True)
+        self.train_run = self.model.step_train
+        self.eval_run = self.model.step_eval
         self.base_dir = base_dir
         self.run_dir = base_dir
         self.eval_dir = base_dir
@@ -321,7 +323,7 @@ class Trainer(ABC):
                     x = torch.squeeze(x, dim=0)
                 if y.ndim > 1:
                     y = y.reshape(-1)
-                loss, pred = self.model.step_eval(x, y, *z)
+                loss, pred = self.eval_run(x, y, *z)
                 self._add_metric_batch(loss, y, pred, metstage)
                 c = c % 3 + 1
                 epoch_iter.set_postfix_str(f"{postfix}validating{'.' * c}")
@@ -349,7 +351,7 @@ class Trainer(ABC):
             self.model.setup_training(optimizer, criterion, device=device)
             if scheduler_kwargs is not None:
                 if 'type' in scheduler_kwargs:
-                    scheduler_type = scheduler_kwargs['type']
+                    scheduler_type = scheduler_kwargs.pop('type')
                 else:
                     scheduler_type = StepLR
                 self.model.add_lr_scheduler(scheduler_type, **scheduler_kwargs)
@@ -369,7 +371,7 @@ class Trainer(ABC):
                     x = torch.squeeze(x, dim=0)
                 if y.ndim > 1:
                     y = y.reshape(-1)
-                loss, pred = self.model.step_train(x, y, *z)
+                loss, pred = self.train_run(x, y, *z)
                 self._add_metric_batch(loss, y, pred, metstage)
                 epoch_iter.set_postfix_str(f"{postfix}avg step time: {(perf_counter() - start) / j:.3f}")
             self._compute_epoch_metrics(metstage)
