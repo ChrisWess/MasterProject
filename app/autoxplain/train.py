@@ -27,14 +27,15 @@ class CUBDataset(Dataset):
     _batch_fetch = {}
     _projection = {}
 
-    def __init__(self, classes, img_indicators, concept_embeddings, apply_transforms=True, num_concepts_per_img=3):
-        # TODO: allow to skip every 10th image from the dataset and use these in validation
-        #   Maybe just allow to 1) skip every 10th and 2) use a custom list of img_ids (containing every 10th img)
+    def __init__(self, classes, img_indicators, concept_embeddings, apply_transforms=True, validation=False):
         self.classes = classes
-        self.img_ids = tuple(img_indicators.keys())  # defining the indices of the image dataset
+        # defining the indices of the image dataset
+        if validation:
+            self.img_ids = tuple(key for i, key in enumerate(img_indicators.keys(), start=1) if i % 10 == 0)
+        else:
+            self.img_ids = tuple(key for i, key in enumerate(img_indicators.keys(), start=1) if i % 10 != 0)
         self.img_indicators = img_indicators  # mapping from Image IDs to tuple of one-hot vector and class idx
         self.concept_embeddings = torch.tensor(concept_embeddings, dtype=torch.float32)
-        self.num_concepts_per_img = num_concepts_per_img
         self.convert_and_crop = v2.Compose([
             v2.PILToTensor(),
             v2.ToDtype(torch.uint8),
@@ -49,9 +50,11 @@ class CUBDataset(Dataset):
             v2.ColorJitter(brightness=2.5),
         ]) if apply_transforms else None
         self._vgg_transforms = VGG19_Weights.DEFAULT.transforms()
+        # Skip every 10th image from the dataset and use these in validation
+        self.validation = validation
 
     @staticmethod
-    def from_file(cls_fname, img_indic_fname, concept_vecs_fname, base_dir=None):
+    def from_file(cls_fname, img_indic_fname, concept_vecs_fname, base_dir=None, validation=False):
         cls_fname = Path(cls_fname)
         img_indic_fname = Path(img_indic_fname)
         cls_fname = Path(cls_fname)
@@ -72,7 +75,13 @@ class CUBDataset(Dataset):
         projection.clear()
         img_indicators_dict = np.load(img_indic_fname, allow_pickle=True).item()
         concept_vecs = np.load(concept_vecs_fname)
-        return CUBDataset(class_list, img_indicators_dict, concept_vecs)
+        return CUBDataset(class_list, img_indicators_dict, concept_vecs, not validation, validation)
+
+    def validation_dataset(self):
+        if not self.validation:
+            return CUBDataset(self.classes, self.img_indicators, self.concept_embeddings, False, True)
+        else:
+            raise NotImplementedError
 
     def __len__(self):
         return len(self.img_ids)
@@ -99,13 +108,14 @@ class CUBDataset(Dataset):
         img_docs = self.db_client.images.find(self._query, self._projection)
         imgs = []
         cls_idxs = []
-        img_concept_indicators = []
+        img_concept_indicators = None if self.validation else []
         for doc in img_docs:
             imgs.append(self.convert_and_crop(Image.open(BytesIO(self.fs.get(doc['image']).read()))))
             obj_id = str(doc['objects'][0]['_id'])
             img_infos = self.img_indicators[obj_id]
             cls_idxs.append(torch.tensor(img_infos[1], dtype=torch.int64))
-            img_concept_indicators.append(torch.tensor(img_infos[0], dtype=torch.float32))
+            if not self.validation:
+                img_concept_indicators.append(torch.tensor(img_infos[0], dtype=torch.float32))
         self._query.clear()
         self._batch_fetch.clear()
         self._projection.clear()
@@ -114,7 +124,10 @@ class CUBDataset(Dataset):
             img_arr = self.transforms(img_arr)
         # finally apply VGG19 transforms
         img_arr = self._vgg_transforms(img_arr)
-        return img_arr, torch.stack(cls_idxs), torch.stack(img_concept_indicators), self.concept_embeddings
+        if self.validation:
+            return img_arr, torch.stack(cls_idxs)
+        else:
+            return img_arr, torch.stack(cls_idxs), torch.stack(img_concept_indicators), self.concept_embeddings
 
 
 class ClassifierTrainer(Trainer):
@@ -133,6 +146,10 @@ class ClassifierTrainer(Trainer):
         pred_all = []
         with torch.no_grad():
             for x, y, *z in test_dl:
+                if x.ndim > 4:
+                    x = torch.squeeze(x, dim=0)
+                if y.ndim > 1:
+                    y = y.reshape(-1)
                 loss, pred = self.model.step_eval(x, y, *z)
                 self._add_metric_batch(loss, y, pred, metstage)
                 y_all.append(y)
@@ -189,12 +206,17 @@ def run_ccnn_training(lr=0.001, load_path=None):
         torch.utils.data.sampler.RandomSampler(dset),
         batch_size=32,
         drop_last=True)
-    # val_dset = CUBDataset(...)
     tdl = DataLoader(dset, sampler=sampler, num_workers=3)
-    # vdl = DataLoader(val_dset, batch_size=64, num_workers=2)
+
+    val_dset = dset.validation_dataset()
+    val_sampler = torch.utils.data.sampler.BatchSampler(
+        torch.utils.data.sampler.RandomSampler(val_dset),
+        batch_size=64,
+        drop_last=True)
+    vdl = DataLoader(val_dset, sampler=val_sampler, num_workers=2)
 
     net = CCNN(dset.num_concepts, dset.num_classes)
-    trainr = CCNNTrainer(net, tdl, load_path=load_path)
+    trainr = CCNNTrainer(net, tdl, vdl, load_path=load_path)
     # Train newly added layers first
     trainr.set_vgg_base_frozen(True)
     trainr.start_training(20, lr)
@@ -205,4 +227,4 @@ def run_ccnn_training(lr=0.001, load_path=None):
     # Finally fine-tune the fully connected layer in isolation
     trainr.set_fc_layer_train_strategy()
     trainr.set_vgg_base_frozen(False, True)
-    trainr.start_training(20, lr)
+    trainr.start_training(20, lr, save_fname='trainer_model.pt')

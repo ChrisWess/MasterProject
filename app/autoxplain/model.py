@@ -244,8 +244,7 @@ class CCNN(BaseClassifier):
     def step_eval(self, x, y):
         x = x.to(self.device, torch.float32)
         y = y.to(self.device, torch.int64)
-        y_hat = self(x)
-        loss = self.criterion(y_hat, y)
-        loss = loss.item() * y.shape[0]
+        y_hat = self.classify(self.global_avg_pool(self(x)))
+        loss = self.criterion(y_hat, y).mean()
         pred = self._pred_fn(y_hat)
         return loss, pred.cpu()

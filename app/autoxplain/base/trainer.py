@@ -253,7 +253,7 @@ class Trainer(ABC):
         self.add_metric_func('confusions', self.confusions(num_classes), stages, None, self._init_confusion, False)
 
     def start_training(self, epochs, lrs, validate=True, evaluate=True, scheduler_kwargs=None, **kwargs):
-        overwrite = kwargs['overwrite'] if 'overwrite' in kwargs else True
+        overwrite = kwargs.get('overwrite', False)
         if self.train_run_id < 0 or 'new_run' in kwargs and kwargs['new_run']:
             self.finish_run(True, overwrite)
         if 'batch_size' in kwargs:
@@ -264,7 +264,7 @@ class Trainer(ABC):
                 self.update_dataloader(stage='train', batch_size=kwargs['train_batch_size'])
             if 'val_batch_size' in kwargs:
                 self.update_dataloader(stage='val', batch_size=kwargs['val_batch_size'])
-        save_fname = kwargs['save_fname'] if 'save_fname' in kwargs else 'trainer_model.pt'
+        save_fname = kwargs.get('save_fname', None)
         print_each = kwargs.pop('print_each', 1)
         if isinstance(epochs, Sized) or isinstance(lrs, Sized):
             if isinstance(epochs, Sized) and not isinstance(lrs, Sized):
@@ -387,8 +387,7 @@ class Trainer(ABC):
 
     def run_evaluation(self, stats_fname='eval_stats', test_dset=None, plot_prefix=None, **kwargs):
         if self.eval_run_id < 0 or 'new_run' in kwargs and kwargs['new_run']:
-            overwrite = kwargs['overwrite'] if 'overwrite' in kwargs else True
-            self.finish_run(False, overwrite)
+            self.finish_run(False, kwargs.get('overwrite', False))
         self.model.eval()
         save_dir = self.eval_dir / f'results_for_{self.model_id}'
         stats_fname = self.eval_dir / stats_fname
