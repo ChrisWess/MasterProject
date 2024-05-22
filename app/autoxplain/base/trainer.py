@@ -46,10 +46,14 @@ class Trainer(ABC):
         self.model_id = kwargs.pop('model_id', type(self.model).__name__)
         if 'optimizer' in kwargs:
             self.model.setup_training(**kwargs)
-        base_dir = Path(base_dir)
-        base_dir.mkdir(parents=True, exist_ok=True)
         self.train_run = self.model.step_train
         self.eval_run = self.model.step_eval
+        if 'root_dir' in kwargs:
+            self.root_dir = Path(kwargs['root_dir'])
+        else:
+            self.root_dir = Path()
+        base_dir = self.root_dir / Path(base_dir)
+        base_dir.mkdir(parents=True, exist_ok=True)
         self.base_dir = base_dir
         self.run_dir = base_dir
         self.eval_dir = base_dir

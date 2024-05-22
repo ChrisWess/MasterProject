@@ -132,7 +132,7 @@ class CUBDataset(Dataset):
 
 class ClassifierTrainer(Trainer):
     def __init__(self, model, train_dataset, val_dataset=None, test_dataset=None, base_dir='model_save',
-                 data_dir_name='base/data', class_names=None, **kwargs):
+                 data_dir_name='data', class_names=None, **kwargs):
         super().__init__(model, train_dataset, val_dataset, test_dataset, base_dir, data_dir_name, **kwargs)
         assert isinstance(model, BaseClassifier)
         self.class_names = [f'class{i}' for i in range(self.model.num_classes)] if class_names is None else class_names
@@ -176,9 +176,9 @@ class ClassifierTrainer(Trainer):
 
 class CCNNTrainer(ClassifierTrainer):
     def __init__(self, model, train_dataset, val_dataset=None, test_dataset=None, base_dir='model_save',
-                 data_dir_name='base/data', class_names=None, **kwargs):
+                 data_dir_name='data', class_names=None, **kwargs):
         super().__init__(model, train_dataset, val_dataset, test_dataset, base_dir,
-                         data_dir_name, class_names, **kwargs)
+                         data_dir_name, class_names, root_dir='app/autoxplain', **kwargs)
         assert isinstance(model, CCNN)
         self.scheduler_kwargs = {'type': ExponentialLR, 'step_every': 10000, 'gamma': 0.96}
 
