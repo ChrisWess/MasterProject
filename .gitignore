@@ -1,3 +1,4 @@
 /venv
 /app/preproc/yolo_models/*
 /app/autoxplain/base/data/*
+/app/autoxplain/model_save/*

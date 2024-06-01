@@ -57,7 +57,7 @@ class Trainer(ABC):
         self.base_dir = base_dir
         self.run_dir = base_dir
         self.eval_dir = base_dir
-        self.data_dir_name = data_dir_name
+        self.data_dir_name = self.root_dir / data_dir_name
         self.seed = kwargs['seed'] if 'seed' in kwargs else None
         self.train_dl = self.val_dl = self.test_dl = self.metric_states = self.metrics = self.metrics_excluded = None
         self.train_run_id = self.eval_run_id = -1  # -1 denotes that this was not run ever

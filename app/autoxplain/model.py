@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -6,7 +7,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 from torch.nn.utils.clip_grad import clip_grad_norm
-from torchvision.models import VGG19_Weights
+from torchvision.models import VGG19_Weights, ResNet50_Weights
+
+from app.autoxplain.base.dataset import CUBDataset
 
 
 class BaseModel(nn.Module, ABC):
@@ -112,11 +115,10 @@ class BaseClassifier(BaseModel, ABC):
     def determine_multi(y_hat):
         return torch.argmax(y_hat, dim=1)
 
-    def infer(self, x, thresh=0, lengths=None):
+    def infer(self, x, thresh=0):
         with torch.no_grad():
-            x = torch.atleast_2d(torch.LongTensor(x)).to(self.device)
-            lengths = torch.LongTensor(lengths)
-            y_hat = self(x, lengths)
+            x = torch.atleast_2d(x.to(self.device, torch.float32))
+            y_hat = self(x)
             if self.num_classes == 2:
                 return self.determine_bin(y_hat, thresh)
             else:
@@ -124,21 +126,28 @@ class BaseClassifier(BaseModel, ABC):
 
 
 class CCNN(BaseClassifier):
-    def __init__(self, num_concepts, num_classes, device=None, clip_value=None, optimizer=torch.optim.Adam,
-                 word_vec_size=50, embeds_size=40, dropout_rate=0.5, lambda_arg=0.4):
+    def __init__(self, num_concepts, num_classes, conv_base=torchvision.models.vgg19(VGG19_Weights.DEFAULT).features,
+                 train_batch_size=32, conv_base_out_fms=512, device=None, clip_value=None, optimizer=torch.optim.Adam,
+                 word_vec_size=50, embeds_size=40, dropout_rate=0.5, lambda_arg=0.4, additional_pool=False):
         super(CCNN, self).__init__(num_classes, device, clip_value, optimizer, nn.CrossEntropyLoss(reduction='none'))
-        self.cls_indicator_vectors = torch.tensor(
+        # TODO: cls_indicator should be a buffer (to allow saving and loading)
+        cls_indicator_vectors = torch.tensor(
             np.load('app/autoxplain/base/data/class_indicator_vectors.npy').astype(np.float32), device=self.device)
+        self.register_buffer('cls_indicator_vectors', cls_indicator_vectors)
         # TODO: option to use own saved weights from previous training
         #  (otherwise full VGG19 weights with fully connected layers need to be saved to disk)
         self.num_concepts = num_concepts
         self.embeds_size = embeds_size
         self.lambda_arg = lambda_arg
-        self.conv_base = torchvision.models.vgg19(VGG19_Weights.DEFAULT).features
-        self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.concept_kernels = nn.Conv2d(512, num_concepts, kernel_size=1)
+        self.conv_base = conv_base
+        if additional_pool:
+            self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+            self.v_e_in_size = 9 * train_batch_size  # (kernel dims times batch size)
+        else:
+            self.maxpool = None
+            self.v_e_in_size = 49 * train_batch_size
+        self.concept_kernels = nn.Conv2d(conv_base_out_fms, num_concepts, kernel_size=1)
         self.dropout = nn.Dropout(p=dropout_rate)
-        self.v_e_in_size = 288  # 3*3 * 32  (kernel dims times batch size)
         self.v_e_converter = nn.Linear(self.v_e_in_size, embeds_size)  # visual embedding layer
         self.w_e_converter = nn.Linear(word_vec_size, embeds_size)  # word embedding layer
         self.classifier = nn.Linear(num_concepts, num_classes)
@@ -148,8 +157,10 @@ class CCNN(BaseClassifier):
             # allows only all possible concepts for a class as outputs.
             self.classifier.weight.copy_(self.cls_indicator_vectors.T * 0.1)
 
-    def freeze_conv_base(self, freeze_concept_filters=False):
-        for param in self.conv_base.parameters():
+    def freeze_conv_base(self, freeze_concept_filters=False, freeze_until_vgg_layer=None):
+        for i, param in enumerate(self.conv_base.parameters(), start=1):
+            if freeze_until_vgg_layer is not None and freeze_until_vgg_layer < i / 2:
+                break
             param.requires_grad = False
         if freeze_concept_filters:
             for param in self.concept_kernels.parameters():
@@ -168,7 +179,8 @@ class CCNN(BaseClassifier):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv_base(x)  # Regular VGG19 classification conv_base returns 7x7 feature maps.
-        x = self.maxpool(x)
+        if self.maxpool is not None:
+            x = self.maxpool(x)
         x = self.concept_kernels(x)
         x = self.dropout(x)
         return x  # Resulting feature maps are only 3x3 in width and height, because of additional max-pooling.
@@ -218,7 +230,7 @@ class CCNN(BaseClassifier):
         global_ap = self.global_avg_pool(x)
         y_pred = self.classify(global_ap)  # classification result
 
-        # Compute Loss
+        # Compute Training Loss
         x = x.reshape((-1, self.v_e_in_size, self.num_concepts)).permute(0, 2, 1).reshape((-1, self.v_e_in_size))
         embedded_visual_feats = F.normalize(self.v_e_converter(x), dim=1)
         embedded_text_feats = F.normalize(self.w_e_converter(embed.to(self.device, torch.float32)).squeeze(0), dim=1)
@@ -245,6 +257,28 @@ class CCNN(BaseClassifier):
         x = x.to(self.device, torch.float32)
         y = y.to(self.device, torch.int64)
         y_hat = self.classify(self.global_avg_pool(self(x)))
-        loss = self.criterion(y_hat, y).mean()
+        loss = self.criterion(y_hat, y).mean().cpu()
         pred = self._pred_fn(y_hat)
         return loss, pred.cpu()
+
+    def infer(self, x):
+        with torch.no_grad():
+            x = torch.atleast_2d(x.to(self.device, torch.float32))
+            return self.determine_multi(self.classify(self.global_avg_pool(self(x))))
+
+
+train_bs = 32
+net_weights = ResNet50_Weights.IMAGENET1K_V2
+resnet = torchvision.models.resnet50(net_weights)
+resnet_feat_extractor = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool, resnet.layer1,
+                                      resnet.layer2, resnet.layer3, resnet.layer4)
+
+dset_args = ('class_ids.txt', 'image_indicator_vectors.npy',
+             'concept_word_phrase_vectors.npy', 'app/autoxplain/base/data',
+             net_weights.transforms())
+dset = CUBDataset.from_file(*dset_args)
+ccnn_net = CCNN(dset.num_concepts, dset.num_classes, resnet_feat_extractor, 32, conv_base_out_fms=2048)
+# Load model if it exists
+model_path = Path('app/autoxplain/model_save/train_0/accuracy_highscore.pt')
+if not model_path.exists():
+    ccnn_net.load(model_path)
