@@ -156,6 +156,7 @@ class CCNN(BaseClassifier):
             # initialize classifier layer from class indicators, which
             # allows only all possible concepts for a class as outputs.
             self.classifier.weight.copy_(self.cls_indicator_vectors.T * 0.1)
+        self.to(self.device)
 
     def freeze_conv_base(self, freeze_concept_filters=False, freeze_until_vgg_layer=None):
         for i, param in enumerate(self.conv_base.parameters(), start=1):
@@ -263,22 +264,41 @@ class CCNN(BaseClassifier):
 
     def infer(self, x):
         with torch.no_grad():
-            x = torch.atleast_2d(x.to(self.device, torch.float32))
-            return self.determine_multi(self.classify(self.global_avg_pool(self(x))))
+            x = torch.atleast_3d(x.to(self.device, torch.float32))
+            if x.ndim == 3:
+                x = x.unsqueeze(0)
+            x = self.classify(self.global_avg_pool(self(x)))
+            pred_idxs = self.determine_multi(x).cpu()
+            confidences = F.softmax(x.cpu(), dim=0).gather(1, pred_idxs.unsqueeze(-1)).squeeze()
+            return pred_idxs, confidences
+
+    def find_top_concept_idxs(self, x):
+        with torch.no_grad():
+            x = torch.atleast_3d(x.to(self.device, torch.float32))
+            if x.ndim == 3:
+                x = x.unsqueeze(0)
+            _, idxs = self.global_avg_pool(self(x)).topk(3, dim=1)
+            return idxs.cpu()
 
 
+# Initialize the network model and training datasets and parameters on startup
 train_bs = 32
 net_weights = ResNet50_Weights.IMAGENET1K_V2
-resnet = torchvision.models.resnet50(net_weights)
-resnet_feat_extractor = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool, resnet.layer1,
-                                      resnet.layer2, resnet.layer3, resnet.layer4)
 
+data_dir = 'app/autoxplain/base/data'
 dset_args = ('class_ids.txt', 'image_indicator_vectors.npy',
-             'concept_word_phrase_vectors.npy', 'app/autoxplain/base/data',
-             net_weights.transforms())
+             'concept_word_phrase_vectors.npy', data_dir, net_weights.transforms())
 dset = CUBDataset.from_file(*dset_args)
-ccnn_net = CCNN(dset.num_concepts, dset.num_classes, resnet_feat_extractor, 32, conv_base_out_fms=2048)
 # Load model if it exists
 model_path = Path('app/autoxplain/model_save/train_0/accuracy_highscore.pt')
-if not model_path.exists():
+if model_path.exists():
+    resnet = torchvision.models.resnet50()
+    resnet_feat_extractor = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool, resnet.layer1,
+                                          resnet.layer2, resnet.layer3, resnet.layer4)
+    ccnn_net = CCNN(dset.num_concepts, dset.num_classes, resnet_feat_extractor, train_bs, conv_base_out_fms=2048)
     ccnn_net.load(model_path)
+else:
+    resnet = torchvision.models.resnet50(net_weights)
+    resnet_feat_extractor = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool, resnet.layer1,
+                                          resnet.layer2, resnet.layer3, resnet.layer4)
+    ccnn_net = CCNN(dset.num_concepts, dset.num_classes, resnet_feat_extractor, train_bs, conv_base_out_fms=2048)

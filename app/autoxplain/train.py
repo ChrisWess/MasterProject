@@ -107,7 +107,7 @@ def run_ccnn_training(lr=0.001, load_path=None):
     trainr.set_vgg_base_frozen(False)
     # trainr.set_vgg_base_frozen(8)
     trainr.start_training(30, lr)
-    # Finally fine-tune the fully connected layer in isolation
+    # Finally fine-tune only the fully connected layer in isolation
     trainr.set_fc_layer_train_strategy()
-    trainr.set_vgg_base_frozen(False, True)
+    trainr.set_vgg_base_frozen(True, True)
     trainr.start_training(10, lr, save_fname='trainer_model.pt')

@@ -52,7 +52,7 @@ class CUBDataset(Dataset):
             v2.ColorJitter(saturation=2.5),
             v2.ColorJitter(brightness=2.5),
         ]) if apply_augment_transforms else None
-        self._preprocess_transforms = preprocess_transforms
+        self.preprocess_transforms = preprocess_transforms
         # Skip every 10th image from the dataset and use these in validation
         self.validation = validation
 
@@ -85,7 +85,7 @@ class CUBDataset(Dataset):
     def validation_dataset(self):
         if not self.validation:
             return CUBDataset(self.classes, self.img_indicators, self.concept_embeddings,
-                              self._preprocess_transforms, False, True)
+                              self.preprocess_transforms, False, True)
         else:
             raise NotImplementedError
 
@@ -110,7 +110,7 @@ class CUBDataset(Dataset):
         self._query['objects._id'] = self._batch_fetch
         self._projection['image'] = 1
         self._projection['objects._id'] = 1
-        # TODO: crop the images to include only the part of the object BBox
+        # TODO: crop the images to include only the part of the object BBox and resize to (448, 448)
         img_docs = self.db_client.images.find(self._query, self._projection)
         imgs = []
         cls_idxs = []
@@ -128,9 +128,9 @@ class CUBDataset(Dataset):
         img_arr = torch.stack(imgs)
         if self.transforms:
             img_arr = self.transforms(img_arr)
-        if self._preprocess_transforms is not None:
+        if self.preprocess_transforms is not None:
             # finally apply necessary image preprocessing transforms
-            img_arr = self._preprocess_transforms(img_arr)
+            img_arr = self.preprocess_transforms(img_arr)
         if self.validation:
             return img_arr, torch.stack(cls_idxs)
         else:

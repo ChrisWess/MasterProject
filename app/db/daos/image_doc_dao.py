@@ -342,8 +342,17 @@ class ImgDocDAO(JoinableDAO):
                 projection.clear()
         return result
 
-    def get_img_sample(self, sample_size, projection, generate_response, db_session):
-        self._agg_pipeline.append()
+    def get_img_sample(self, sample_size, projection=None, generate_response=False, db_session=None):
+        projection = super().build_projection(projection)
+        self._agg_pipeline.append({'$sample': {'size': sample_size}})
+        if projection:
+            self._agg_pipeline.append(self._agg_projection)
+        agg = self.collection.aggregate(self._agg_pipeline, session=db_session)
+        result = []
+        for res in agg:
+            res['image'] = fs.get(res['image'], session=db_session).read()
+            result.append(res)
+        return self.to_response(result) if generate_response and result is not None else result
 
     def find_by_name(self, name, projection=None, generate_response=False, db_session=None):
         """
