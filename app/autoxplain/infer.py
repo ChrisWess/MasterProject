@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 
 from app.autoxplain.model import ccnn_net, dset, data_dir
@@ -37,3 +38,24 @@ def identify_object_concepts(imgs):
                 concept_strs.append(lines[idx][:-1])
         results.append((np.array(row), concept_strs))
     return results
+
+
+def show_dset(num_sample=5):
+    vds = dset.validation_dataset(False)
+    sampler = torch.utils.data.sampler.BatchSampler(torch.utils.data.sampler.RandomSampler(vds),
+                                                    batch_size=1, drop_last=False)
+    tdl = DataLoader(vds, sampler=sampler)
+    to_pil = v2.ToPILImage()
+    for i, x in enumerate(tdl, start=1):
+        to_pil(x[0].squeeze()).show()
+        if i == num_sample:
+            return
+
+
+def binary_activation_mask():
+    # TODO: create a binary mask where activation values greater
+    #  than 0.995 of the maximum activation are set to 1, and the rest
+    #  are set to 0. Then we use bilinear interpolation to generate the
+    #  image-resolution mask, and overlay the mask on an image
+    #  to identify the receptive field
+    pass

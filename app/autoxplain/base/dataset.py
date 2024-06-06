@@ -14,6 +14,33 @@ from torchvision.transforms import v2, InterpolationMode
 import config
 
 
+def get_object_crop(img_doc):
+    """
+    Get the image crop of the `DetectedObject` with the given ID
+    :return: The bytes of the cropped image
+    """
+    objs = img_doc['objects']
+    # TODO: select correct image from list of all object IDs from current batch
+    obj = objs[0]
+    tlx, tly, brx, bry = obj['tlx'], obj['tly'], obj['brx'], obj['bry']
+    # If object image crop is outside of 0.5-1.5 width/height ratio, then try to expand the crop to
+    # fall into that range. Otherwise, resizing will cause the image to become too stretched.
+    width = brx - tlx
+    height = bry - tly
+    wh_ratio = width / height
+    if wh_ratio > 1.2:
+        trgt_height = width / 1.2
+        height_delta = (trgt_height - height) / 2
+        bbox = (tlx, max(tly - height_delta, 0), brx, min(bry + height_delta, img_doc['height']))
+    elif wh_ratio < .8:
+        trgt_width = height * 0.8
+        width_delta = (trgt_width - width) / 2
+        bbox = (max(tlx - width_delta, 0), tly, min(brx + width_delta, img_doc['width']), bry)
+    else:
+        bbox = (tlx, tly, brx, bry)
+    return Image.open(BytesIO(CUBDataset.fs.get(img_doc['image']).read())).crop(bbox)
+
+
 class CUBDataset(Dataset):
     db_client = MongoClient(
         (config.Production if 'PRODUCTION' in os.environ else config).Debug.MONGODB_DATABASE_URI).xplaindb
@@ -39,10 +66,10 @@ class CUBDataset(Dataset):
             self.concept_embeddings = concept_embeddings
         else:
             self.concept_embeddings = torch.tensor(concept_embeddings, dtype=torch.float32)
-        self.convert_and_crop = v2.Compose([
+        self.convert_and_resize = v2.Compose([
             v2.PILToTensor(),
             v2.ToDtype(torch.uint8),
-            v2.RandomCrop(size=(448, 448), pad_if_needed=True)
+            v2.Resize(size=(448, 448))
         ])
         self.transforms = v2.RandomChoice([
             v2.RandomHorizontalFlip(p=1),
@@ -82,10 +109,10 @@ class CUBDataset(Dataset):
         return CUBDataset(class_list, img_indicators_dict, concept_vecs,
                           preprocess_transforms, not validation, validation)
 
-    def validation_dataset(self):
+    def validation_dataset(self, preprocess_trafo=True):
         if not self.validation:
             return CUBDataset(self.classes, self.img_indicators, self.concept_embeddings,
-                              self.preprocess_transforms, False, True)
+                              self.preprocess_transforms if preprocess_trafo else None, False, True)
         else:
             raise NotImplementedError
 
@@ -106,17 +133,25 @@ class CUBDataset(Dataset):
 
     def __getitem__(self, idxs):
         self._query.clear()
-        self._batch_fetch['$in'] = [ObjectId(self.img_ids[idx]) for idx in idxs]
+        obj_ids = [ObjectId(self.img_ids[idx]) for idx in idxs]
+        self._batch_fetch['$in'] = obj_ids
         self._query['objects._id'] = self._batch_fetch
         self._projection['image'] = 1
+        self._projection['width'] = 1
+        self._projection['height'] = 1
         self._projection['objects._id'] = 1
-        # TODO: crop the images to include only the part of the object BBox and resize to (448, 448)
+        self._projection['objects.tlx'] = 1
+        self._projection['objects.tly'] = 1
+        self._projection['objects.brx'] = 1
+        self._projection['objects.bry'] = 1
         img_docs = self.db_client.images.find(self._query, self._projection)
         imgs = []
         cls_idxs = []
         img_concept_indicators = None if self.validation else []
         for doc in img_docs:
-            imgs.append(self.convert_and_crop(Image.open(BytesIO(self.fs.get(doc['image']).read()))))
+            # Crop the images to include only the part of the object BBox and resize to (448, 448)
+            resized_img = self.convert_and_resize(get_object_crop(doc))
+            imgs.append(resized_img)
             obj_id = str(doc['objects'][0]['_id'])
             img_infos = self.img_indicators[obj_id]
             cls_idxs.append(torch.tensor(img_infos[1], dtype=torch.int64))

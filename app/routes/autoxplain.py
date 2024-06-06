@@ -3,7 +3,7 @@ from io import BytesIO
 from PIL import Image
 
 from app import application
-from app.autoxplain.infer import classify_object_images, identify_object_concepts
+from app.autoxplain.infer import classify_object_images, identify_object_concepts, show_dset
 from app.autoxplain.train import run_ccnn_training
 from app.db.daos.image_doc_dao import ImgDocDAO
 from app.db.daos.label_dao import LabelDAO
@@ -12,7 +12,7 @@ from app.db.daos.label_dao import LabelDAO
 @application.route('/train', methods=['GET'])
 def trigger_train_model():
     run_ccnn_training()
-    return 'done'
+    return 'Training finished successfully!'
 
 
 @application.route('/testClassify', methods=['GET'])
@@ -40,3 +40,9 @@ def identify_imgobj_concepts():
                'imgId': str(idoc['_id']),
                'fname': idoc['fname']} for cd, idoc in zip(concept_data, img_docs)]
     return result
+
+
+@application.route('/showTrainImages', methods=['GET'])
+def show_images():
+    show_dset()
+    return 'Opened PIL images on local machine!'
