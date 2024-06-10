@@ -66,9 +66,12 @@ class CUBDataset(Dataset):
             self.concept_embeddings = concept_embeddings
         else:
             self.concept_embeddings = torch.tensor(concept_embeddings, dtype=torch.float32)
-        self.convert_and_resize = v2.Compose([
+        self.to_torch_trafo = v2.Compose([
             v2.PILToTensor(),
             v2.ToDtype(torch.uint8),
+        ])
+        self.convert_and_resize = v2.Compose([
+            self.to_torch_trafo,
             v2.Resize(size=(448, 448))
         ])
         self.transforms = v2.RandomChoice([
@@ -86,14 +89,15 @@ class CUBDataset(Dataset):
     @staticmethod
     def from_file(cls_fname, img_indic_fname, concept_vecs_fname, base_dir=None,
                   preprocess_transforms=None, validation=False):
-        cls_fname = Path(cls_fname)
-        img_indic_fname = Path(img_indic_fname)
-        cls_fname = Path(cls_fname)
         if base_dir:
             base_dir = Path(base_dir)
             cls_fname = base_dir / cls_fname
             img_indic_fname = base_dir / img_indic_fname
             concept_vecs_fname = base_dir / concept_vecs_fname
+        else:
+            cls_fname = Path(cls_fname)
+            img_indic_fname = Path(img_indic_fname)
+            concept_vecs_fname = Path(concept_vecs_fname)
         class_list = []
         query = CUBDataset._query
         projection = CUBDataset._projection
@@ -131,11 +135,7 @@ class CUBDataset(Dataset):
         self._query['_id'] = ObjectId(self.classes[cls_idx])
         return self.db_client.labels.find_one(self._query)
 
-    def __getitem__(self, idxs):
-        self._query.clear()
-        obj_ids = [ObjectId(self.img_ids[idx]) for idx in idxs]
-        self._batch_fetch['$in'] = obj_ids
-        self._query['objects._id'] = self._batch_fetch
+    def _set_obj_projection(self):
         self._projection['image'] = 1
         self._projection['width'] = 1
         self._projection['height'] = 1
@@ -144,6 +144,30 @@ class CUBDataset(Dataset):
         self._projection['objects.tly'] = 1
         self._projection['objects.brx'] = 1
         self._projection['objects.bry'] = 1
+
+    def _load_img_by_obj_id(self, obj_id):
+        self._query.clear()
+        self._query['objects._id'] = obj_id
+        self._set_obj_projection()
+        idoc = self.db_client.images.find_one(self._query, self._projection)
+        self._query.clear()
+        self._projection.clear()
+        return idoc
+
+    def load_torch_image(self, obj_id):
+        idoc = self._load_img_by_obj_id(obj_id)
+        return self.to_torch_trafo(get_object_crop(idoc))
+
+    def load_torch_image_resized(self, obj_id):
+        idoc = self._load_img_by_obj_id(obj_id)
+        return self.convert_and_resize(get_object_crop(idoc))
+
+    def __getitem__(self, idxs):
+        self._query.clear()
+        obj_ids = [ObjectId(self.img_ids[idx]) for idx in idxs]
+        self._batch_fetch['$in'] = obj_ids
+        self._query['objects._id'] = self._batch_fetch
+        self._set_obj_projection()
         img_docs = self.db_client.images.find(self._query, self._projection)
         imgs = []
         cls_idxs = []

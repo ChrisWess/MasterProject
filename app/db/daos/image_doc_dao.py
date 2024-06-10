@@ -346,6 +346,10 @@ class ImgDocDAO(JoinableDAO):
         projection = super().build_projection(projection)
         self._agg_pipeline.append({'$sample': {'size': sample_size}})
         if projection:
+            if 'image' in projection and projection['image'] == 0:
+                del projection['image']
+            elif any(p for p in projection):
+                projection['image'] = 1
             self._agg_pipeline.append(self._agg_projection)
         agg = self.collection.aggregate(self._agg_pipeline, session=db_session)
         result = []

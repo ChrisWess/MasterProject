@@ -272,6 +272,13 @@ class CCNN(BaseClassifier):
             confidences = F.softmax(x.cpu(), dim=0).gather(1, pred_idxs.unsqueeze(-1)).squeeze()
             return pred_idxs, confidences
 
+    def get_concept_feature_maps(self, x):
+        with torch.no_grad():
+            x = torch.atleast_3d(x.to(self.device, torch.float32))
+            if x.ndim == 3:
+                x = x.unsqueeze(0)
+            return self(x).cpu()
+
     def find_top_concept_idxs(self, x):
         with torch.no_grad():
             x = torch.atleast_3d(x.to(self.device, torch.float32))
@@ -285,12 +292,14 @@ class CCNN(BaseClassifier):
 train_bs = 32
 net_weights = ResNet50_Weights.IMAGENET1K_V2
 
-data_dir = 'app/autoxplain/base/data'
-dset_args = ('class_ids.txt', 'image_indicator_vectors.npy',
-             'concept_word_phrase_vectors.npy', data_dir, net_weights.transforms())
+oxp_root_dir = Path('app/autoxplain')
+oxp_model_base_dir = oxp_root_dir / 'base'
+oxp_model_data_dir = oxp_model_base_dir / 'data'
+dset_args = ('class_ids.txt', 'image_indicator_vectors.npy', 'concept_word_phrase_vectors.npy',
+             oxp_model_data_dir, net_weights.transforms())
 dset = CUBDataset.from_file(*dset_args)
 # Load model if it exists
-model_path = Path('app/autoxplain/model_save/train_0/accuracy_highscore.pt')
+model_path = oxp_root_dir / 'model_save/train_0/accuracy_highscore.pt'
 if model_path.exists():
     resnet = torchvision.models.resnet50()
     resnet_feat_extractor = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool, resnet.layer1,
@@ -302,3 +311,4 @@ else:
     resnet_feat_extractor = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool, resnet.layer1,
                                           resnet.layer2, resnet.layer3, resnet.layer4)
     ccnn_net = CCNN(dset.num_concepts, dset.num_classes, resnet_feat_extractor, train_bs, conv_base_out_fms=2048)
+ccnn_net.train(False)
