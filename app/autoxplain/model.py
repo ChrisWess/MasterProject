@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 from torch.nn.utils.clip_grad import clip_grad_norm
-from torchvision.models import VGG19_Weights, ResNet50_Weights
+from torchvision.models import VGG19_Weights, ResNet101_Weights
 
 from app.autoxplain.base.dataset import CUBDataset
 
@@ -284,13 +284,14 @@ class CCNN(BaseClassifier):
             x = torch.atleast_3d(x.to(self.device, torch.float32))
             if x.ndim == 3:
                 x = x.unsqueeze(0)
-            _, idxs = self.global_avg_pool(self(x)).topk(3, dim=1)
-            return idxs.cpu()
+            x = F.softmax(self.global_avg_pool(self(x)), dim=1)
+            conf, idxs = x.topk(3, dim=1)
+            return idxs.cpu(), conf.cpu()
 
 
 # Initialize the network model and training datasets and parameters on startup
 train_bs = 32
-net_weights = ResNet50_Weights.IMAGENET1K_V2
+net_weights = ResNet101_Weights.IMAGENET1K_V2
 
 oxp_root_dir = Path('app/autoxplain')
 oxp_model_base_dir = oxp_root_dir / 'base'
@@ -299,15 +300,16 @@ dset_args = ('class_ids.txt', 'image_indicator_vectors.npy', 'concept_word_phras
              oxp_model_data_dir, net_weights.transforms())
 dset = CUBDataset.from_file(*dset_args)
 # Load model if it exists
-model_path = oxp_root_dir / 'model_save/train_0/accuracy_highscore.pt'
+model_save_dir = oxp_root_dir / 'model_save'
+model_path = model_save_dir / 'train_0/accuracy_highscore.pt'
 if model_path.exists():
-    resnet = torchvision.models.resnet50()
+    resnet = torchvision.models.resnet101()
     resnet_feat_extractor = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool, resnet.layer1,
                                           resnet.layer2, resnet.layer3, resnet.layer4)
     ccnn_net = CCNN(dset.num_concepts, dset.num_classes, resnet_feat_extractor, train_bs, conv_base_out_fms=2048)
     ccnn_net.load(model_path)
 else:
-    resnet = torchvision.models.resnet50(net_weights)
+    resnet = torchvision.models.resnet101(net_weights)
     resnet_feat_extractor = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool, resnet.layer1,
                                           resnet.layer2, resnet.layer3, resnet.layer4)
     ccnn_net = CCNN(dset.num_concepts, dset.num_classes, resnet_feat_extractor, train_bs, conv_base_out_fms=2048)

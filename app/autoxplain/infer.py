@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 from torchvision.transforms.v2.functional import adjust_brightness
 
-from app.autoxplain.model import ccnn_net, dset, oxp_model_data_dir, oxp_root_dir
+from app.autoxplain.model import ccnn_net, dset, oxp_model_data_dir, oxp_root_dir, model_save_dir
 
 center_crop = v2.Compose([
     v2.PILToTensor(),
@@ -37,15 +37,15 @@ def classify_object_images(imgs, confidence_thresh=0.):
 
 
 def identify_object_concepts(imgs):
-    cidxs_batches = ccnn_net.find_top_concept_idxs(_pil_imgs_to_tensor(imgs))
+    cidxs_batches, confidences = ccnn_net.find_top_concept_idxs(_pil_imgs_to_tensor(imgs))
     results = []
-    for row in cidxs_batches:
+    for row, conf in zip(cidxs_batches, confidences):
         concept_strs = []
         with open(oxp_model_data_dir / 'unique_concepts.txt', 'r') as f:
             lines = f.readlines()
             for idx in row:
                 concept_strs.append(lines[idx][:-1])
-        results.append((np.array(row), concept_strs))
+        results.append((np.array(row), concept_strs, np.array(conf)))
     return results
 
 
@@ -107,19 +107,22 @@ def _simple_mask_text_location(interpolated_mask, font_size, padding=10):
     return padding, row
 
 
-def highlight_filter_activation_masks(obj_ids, concept_data, mask_thresh=0.95, font_size=18):
+def highlight_filter_activation_masks(obj_ids, concept_data, mask_thresh=0.95, font_size=18, show_local=False):
     # Create a binary mask where activation values greater than 0.95 (threshold => mask_thresh)
     # of the maximum activation are set to 1, and the rest are set to 0.
     # Then we use bilinear interpolation to generate the image-resolution mask,
     # and overlay the mask on an image to identify the receptive field.
     result = []
+    highlighted_img_dir = model_save_dir / 'highlighted_imgs'
+    highlighted_img_dir.mkdir(exist_ok=True)
     img_label_font = ImageFont.truetype(str(oxp_root_dir / "fonts/AbhayaLibre.ttf"), font_size)
     imgs = _pil_imgs_to_tensor(obj_ids)
     fms = ccnn_net.get_concept_feature_maps(imgs)
     for obj_id, imgf, concepts in zip(obj_ids, fms, concept_data):
         img = dset.load_torch_image(obj_id)  # load base image to overlay with the interpolated mask
         imgs_concepts_marked = []
-        for concept_filter_idx, concept_name in zip(*concepts):
+        for i, (concept_filter_idx, concept_name, confidence) in enumerate(zip(*concepts), start=1):
+            img_fpath = highlighted_img_dir / f'{obj_id}_top{i}c.png'
             concept_filter_map = imgf[concept_filter_idx]  # resulting feature map from this filter
             max_activation = torch.max(concept_filter_map).item()
             mask = concept_filter_map >= max_activation * mask_thresh
@@ -133,8 +136,11 @@ def highlight_filter_activation_masks(obj_ids, concept_data, mask_thresh=0.95, f
             masked_img = to_pil(darker_img)
             # Label the image with the concept description (i.e. its name)
             concept_name = ' '.join(map(lambda s: s.capitalize(), concept_name.split()))
+            concept_name += f' ({confidence:0.2f}%)'
             ImageDraw.Draw(masked_img).text(mask_loc, concept_name, (255, 255, 255), font=img_label_font)
-            masked_img.show()
+            if show_local:
+                masked_img.show()
+            masked_img.save(img_fpath)
             imgs_concepts_marked.append(masked_img)
         result.append(imgs_concepts_marked)
     return result

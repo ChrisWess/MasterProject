@@ -38,6 +38,7 @@ def identify_imgobj_concepts():
     imgs = [idoc['objects'][0]['_id'] for idoc in img_docs]
     concept_data = identify_object_concepts(imgs)
     result = [{'concepts': cd[1],
+               'contributions': [conf * 100 for conf in cd[2]],
                'imgId': str(idoc['_id']),
                'fname': idoc['fname']} for cd, idoc in zip(concept_data, img_docs)]
     return result
@@ -45,7 +46,7 @@ def identify_imgobj_concepts():
 
 @application.route('/testConceptMasks', methods=['GET'])
 def show_concept_masks():
-    sample_size = 3
+    sample_size = 10
     img_docs = ImgDocDAO().get_img_sample(sample_size, projection=('objects._id', 'fname'))
     img_ids = [idoc['objects'][0]['_id'] for idoc in img_docs]
     concept_data = identify_object_concepts(img_ids)
