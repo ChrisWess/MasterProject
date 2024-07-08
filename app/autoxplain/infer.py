@@ -131,12 +131,12 @@ def highlight_filter_activation_masks(obj_ids, concept_data, mask_thresh=0.95, f
             interp_mask = interpolate(interp_mask, img.shape[1:3], mode='bilinear').squeeze().to(dtype=bool)
             mask_loc = _simple_mask_text_location(interp_mask, font_size)
             interp_mask = interp_mask.expand_as(img)
-            darker_img = adjust_brightness(img, 0.3)
+            darker_img = adjust_brightness(img, 0.5)
             darker_img[interp_mask] = img[interp_mask]
             masked_img = to_pil(darker_img)
             # Label the image with the concept description (i.e. its name)
             concept_name = ' '.join(map(lambda s: s.capitalize(), concept_name.split()))
-            concept_name += f' ({confidence:0.2f}%)'
+            concept_name += f' ({100 * confidence:0.1f}%)'
             ImageDraw.Draw(masked_img).text(mask_loc, concept_name, (255, 255, 255), font=img_label_font)
             if show_local:
                 masked_img.show()

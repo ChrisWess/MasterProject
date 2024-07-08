@@ -181,6 +181,7 @@ class BaseDAO(AbstractDAO):
                 self._parent_prefix = ''
                 self._nested_get = self._dummy_nested_get
                 nested_key = "$" + self.location
+                unwnd = {"$unwind": nested_key}
                 self._nested_as_root_agg = [
                     {"$group": {
                         "_id": "$_id",
@@ -188,7 +189,7 @@ class BaseDAO(AbstractDAO):
                             "$push": nested_key
                         }
                     }},
-                    {"$unwind": nested_key},
+                    unwnd, unwnd,
                     {"$replaceRoot": {"newRoot": nested_key}},
                 ]
                 path_increments = ({"$unwind": "$" + self.location},)
@@ -1203,6 +1204,24 @@ class BaseDAO(AbstractDAO):
             return self.to_response(result) if generate_response and result is not None else result
         else:
             raise NotImplementedError('This is only possible for DAOs referring to nested documents!')
+
+    def total_doc_count(self, generate_response=False, db_session=None):
+        """ Count all documents in the collection or all documents in the nesting level for nested documents. """
+        if self.location:
+            try:
+                self._agg_pipeline.extend(self._nested_as_root_agg)
+                self._field_check['$count'] = 'count'
+                self._agg_pipeline.append(self._field_check)
+                result = next(self.collection.aggregate(self._agg_pipeline, session=db_session))
+                return {"result": result['count'], "numResults": 1, "status": 200,
+                        'model': 'count', 'isComplete': True} if generate_response else result
+            finally:
+                self._field_check.clear()
+                self._agg_pipeline.clear()
+        else:
+            result = self.collection.count_documents(self._query_matcher, session=db_session)
+            return {"result": result, "numResults": 1, "status": 200,
+                    'model': 'count', 'isComplete': True} if generate_response else result
 
     def _recurse_get_ids(self, doc, idx, until_idx):
         if idx <= until_idx:

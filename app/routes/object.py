@@ -16,6 +16,11 @@ def find_objects():
     return ObjectDAO().find_all(projection=request.args, generate_response=True)
 
 
+@application.route('/object/count', methods=['GET'])
+def count_objects():
+    return ObjectDAO().total_doc_count(generate_response=True)
+
+
 @application.route('/object/<object_id>', methods=['GET'])
 def find_object_by_id(object_id):
     try:

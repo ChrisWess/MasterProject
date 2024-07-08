@@ -337,7 +337,7 @@ class AnnotationDAO(JoinableDAO):
         # TODO: the annotation would also be a little more readable, if we identify if the root noun of a concept
         #  is singular. If it is singular, then prefix the concept with the word "a" (e.g. a long beak).
         #  Maybe add new field to CorpusWord "singularFlag" that is null for adjectives and bool for nouns?
-        if len(self._field_check) > len(subj_concepts):
+        if subj_concepts is None or len(self._field_check) > len(subj_concepts):
             if subj_concepts:
                 self._helper_list.append('this')
                 annotation = 'this '

@@ -20,6 +20,11 @@ def find_docs():
     return img_dao.find_all(projection=args, generate_response=True)
 
 
+@application.route('/idoc/count', methods=['GET'])
+def count_docs():
+    return ImgDocDAO().total_doc_count(generate_response=True)
+
+
 @application.route('/idoc/full', defaults={'depth': 1}, methods=['GET'])
 @application.route('/idoc/full/<path:depth>', methods=['GET'])
 def unroll_complete_image_document_data(depth):

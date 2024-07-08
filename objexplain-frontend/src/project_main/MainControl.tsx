@@ -47,6 +47,9 @@ const MainControlPanel: FC = () => {
         event.preventDefault();
         if (project && imageName.length >= 3 && !!imageFile) {
             let formData = new FormData();
+            // TODO: allow upload of multi-selection of images directly from the file system
+            //   => apply name to all these images with a suffix appended that marks the index e.g. (1), (2)...
+            //   This spares us a manual zipping of all the image files, which makes this more convenient.
             formData.append('name', imageName);
             formData.append('image', imageFile);
             formData.append('projectId', project._id)

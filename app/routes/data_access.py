@@ -361,6 +361,7 @@ def _import_zipped_dset(project_id, file, bulk_size):
     fname_prefix = args.get('fprefix', None)
     fname_suffix = args.get('fsuffix', '_<int:6>')  # TODO: make option <len:7> to just remove the last 7 chars
     obj_detection = args.get('detect_objects', True)
+    unsuccessful_detection = [] if obj_detection else None
     # allows input of some categories that describe the type of entities (input comma seperated strings)
     label_categories = request.args['categories']
     label_categories = label_categories.split(',')
@@ -405,12 +406,24 @@ def _import_zipped_dset(project_id, file, bulk_size):
                 with myzip.open(aloc) as annof:
                     annos = [anno.decode('utf-8')[:-1] for anno in annof]
                     with myzip.open(iloc) as imgf:
-                        doc = img_dao.add_with_annos(title, full_img_fname, imgf.read(), annos,
-                                                     label, user_id, project_id, use_bulk, obj_detection)
+                        doc, detected = img_dao.add_with_annos(title, full_img_fname, imgf.read(), annos,
+                                                               label, user_id, project_id, use_bulk, obj_detection)
+                        if obj_detection:
+                            unsuccessful_detection.append(not detected)
                         nums_annos += len(annos)
                         _add_to_batch(doc, new_docs, bulk_size, batch, has_worked, project_id)
     if new_docs or batch:
         _finish_import(new_docs, bulk_size, batch, has_worked, project_id, user_id)
+    if unsuccessful_detection:
+        idx = len(unsuccessful_detection) - 1
+        while idx >= 0:
+            if unsuccessful_detection[idx]:
+                unsuccessful_detection[idx] = new_docs[idx]
+            else:
+                del unsuccessful_detection[idx]
+            idx -= 1
+        application.logger.warning(f'Unsuccessful Detection for {len(unsuccessful_detection)} images with IDs:\n' +
+                                   str(unsuccessful_detection))
     return len(new_docs), nums_annos
 
 

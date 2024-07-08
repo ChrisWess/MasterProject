@@ -150,6 +150,7 @@ class ConceptTfIdfDAO(CombinedCategoricalDocStatsDAO):
 
 
 class ConceptTfIdfDAO2(MultiDimDocStatsDAO):
+    # TODO: https://stackoverflow.com/questions/78412520/planexecutor-error-during-aggregation-caused-by-exceeded-memory-limit-for
     def __init__(self):
         super().__init__('concepttfidf', 'images', TfIdfStat,
                          [

@@ -542,8 +542,10 @@ class ImgDocDAO(JoinableDAO):
             if has_annos:
                 annotations = AnnotationDAO().prepare_annotations(annotations, label_id, user_id, True)
             new_id = ObjectId()
+            detected = None
             objs = [None]
             if detect_objs:
+                detected = True
                 # keep only the one BBox with the highest surface area
                 max_bbox_surface = 0
                 for bbox, _ in detect_objects(pil_img, label['categories']):
@@ -554,15 +556,17 @@ class ImgDocDAO(JoinableDAO):
                         max_bbox_surface = curr_surface
                         objs[0] = new_obj
             if objs[0] is None:
+                if detect_objs:
+                    detected = False
                 objs[0] = DetectedObject(id=new_id, label_id=label_id, tlx=0, tly=0, brx=width, bry=height,
                                          annotations=annotations, created_by=user_id)
             doc = ImgDoc(project_id=proj_id, name=name, fname=fname, width=width,
                          height=height, created_by=user_id, objects=objs)
             if as_bulk:
-                return (doc, image, thumb, not has_annos) if has_annos else (doc, image, thumb)
+                return (doc, image, thumb, not has_annos) if has_annos else (doc, image, thumb), detected
             else:
                 return self.insert_doc(doc, image, thumb, proj_id,
-                                       generate_response=generate_response, db_session=db_session)
+                                       generate_response=generate_response, db_session=db_session), detected
         finally:
             self._helper_list.clear()
 

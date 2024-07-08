@@ -15,6 +15,11 @@ def find_all_annotations():
     return AnnotationDAO().find_all(projection=request.args, generate_response=True)
 
 
+@application.route('/annotation/count', methods=['GET'])
+def count_annotations():
+    return AnnotationDAO().total_doc_count(generate_response=True)
+
+
 @application.route('/annotation/search', methods=['GET'])
 # @login_required
 def search_in_annotations():
