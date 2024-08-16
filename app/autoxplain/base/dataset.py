@@ -53,8 +53,8 @@ class CUBDataset(Dataset):
                  apply_augment_transforms=True, validation=False):
         self.classes = classes
         # defining the indices of the image dataset
-        validate_every = 10
-        val_shift = 3
+        validate_every = 2
+        val_shift = 1
         if validation:
             self.img_ids = tuple(
                 key for i, key in enumerate(img_indicators.keys(), start=val_shift) if i % validate_every == 0)
@@ -98,6 +98,8 @@ class CUBDataset(Dataset):
             cls_fname = Path(cls_fname)
             img_indic_fname = Path(img_indic_fname)
             concept_vecs_fname = Path(concept_vecs_fname)
+        if not (cls_fname.exists() and img_indic_fname.exists() and concept_vecs_fname.exists()):
+            return None
         class_list = []
         query = CUBDataset._query
         projection = CUBDataset._projection

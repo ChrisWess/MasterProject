@@ -4,7 +4,7 @@ from bson import ObjectId
 from pymongo import ASCENDING
 
 from app.db.daos.annotation_dao import AnnotationDAO
-from app.db.daos.base import JoinableDAO, BaseDAO, dao_query
+from app.db.daos.base import JoinableDAO, BaseDAO, dao_query, dao_delete
 from app.db.daos.concept_dao import ConceptDAO
 from app.db.daos.object_dao import ObjectDAO
 from app.db.daos.user_dao import UserDAO
@@ -159,3 +159,9 @@ class VisualFeatureDAO(JoinableDAO):
             self._update_commands.clear()
             self._query_matcher.clear()
         return self.to_response(result, BaseDAO.UPDATE) if generate_response else result
+
+    @dao_delete()
+    def delete_features_by_image(self, doc_id, old_obj_ids=None):
+        if old_obj_ids is None:
+            old_obj_ids = ObjectDAO().list_nested_ids(doc_id)
+        self.add_query('objectId', old_obj_ids, '$in')

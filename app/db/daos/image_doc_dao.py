@@ -646,6 +646,15 @@ class ImgDocDAO(JoinableDAO):
         doc['image'] = img_id
         return self.model(**doc).model_dump(by_alias=True)
 
+    def replace_objects(self, doc_id, new_objects, old_object_ids=None, generate_response=False, db_session=None):
+        VisualFeatureDAO().delete_features_by_image(doc_id, old_object_ids, db_session=db_session)
+        return self._replace_objects(doc_id, new_objects, generate_response=generate_response, db_session=db_session)
+
+    @dao_update(update_many=False)
+    def _replace_objects(self, doc_id, new_objects):
+        self.add_query("_id", doc_id)
+        self.add_update('objects', new_objects)
+
     # @transaction
     def delete(self, delete_many=False, custom_query=None, db_session=None):
         """

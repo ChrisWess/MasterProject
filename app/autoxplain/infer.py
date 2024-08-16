@@ -19,16 +19,20 @@ to_pil = v2.ToPILImage()
 
 
 def _pil_imgs_to_tensor(imgs):
-    if not imgs:
-        return
     if torch.is_tensor(imgs):
         return imgs
+    if not imgs:
+        return
     img_preproc = dset.load_torch_image_resized if isinstance(imgs[0], ObjectId) else center_crop
-    if dset.preprocess_transforms is None:
-        imgs = [img_preproc(img) for img in imgs]
+    if len(imgs) == 1:
+        imgs = img_preproc(imgs[0])
+        return imgs if dset.preprocess_transforms is None else dset.preprocess_transforms(imgs)
     else:
-        imgs = [dset.preprocess_transforms(img_preproc(img)) for img in imgs]
-    return torch.stack(imgs)
+        if dset.preprocess_transforms is None:
+            imgs = [img_preproc(img) for img in imgs]
+        else:
+            imgs = [dset.preprocess_transforms(img_preproc(img)) for img in imgs]
+        return torch.stack(imgs)
 
 
 def classify_object_images(imgs, confidence_thresh=0.):
@@ -144,3 +148,46 @@ def highlight_filter_activation_masks(obj_ids, concept_data, mask_thresh=0.95, f
             imgs_concepts_marked.append(masked_img)
         result.append(imgs_concepts_marked)
     return result
+
+
+def generate_full_annotation_data(img, mask_thresh=0.95):
+    # TODO: handle new parameter that allows inputting all concept indices from all annotations for the image
+    #  in order to create a bounding box for all these occurring concepts.
+    #  This requires mapping an explanation's concept to the best matching feature map index.
+    img = _pil_imgs_to_tensor(img)
+    fms, cls_idx, _, con_idxs, _ = ccnn_net.infer_complete(img)  # omit confidence values
+    cls_idx = cls_idx.item()
+    con_idxs = con_idxs.squeeze()
+    fms = fms.squeeze()
+    concept_list = []
+    with open(oxp_model_data_dir / 'unique_concepts.txt', 'r') as f:
+        lines = f.readlines()
+        for idx in con_idxs:
+            concept_words = lines[idx][:-1].split(' ')
+            concept_list.append(concept_words)
+    # Create a feature bounding box
+    bboxs = []
+    for idx in con_idxs:
+        concept_filter_map = fms[idx]  # resulting feature map from this filter
+        max_activation = torch.max(concept_filter_map).item()
+        mask = concept_filter_map >= max_activation * mask_thresh
+        interp_mask = torch.reshape(mask, (1, 1, *mask.shape)).to(dtype=torch.float32)
+        # interpolate the mask to fit to image size and invert mask in order to apply visual update
+        interp_mask = interpolate(interp_mask, img.shape[1:3], mode='bilinear').squeeze().to(dtype=bool)
+        lx = img.shape[2]
+        ty = rx = by = -1
+        for ridx, row in enumerate(interp_mask):
+            if row.sum().item() > 0:
+                if ty == -1:
+                    ty = ridx
+                by = ridx
+                for cidx, bit in enumerate(row):
+                    if bit == 1:
+                        lx = min(lx, cidx)
+                        rx = max(rx, cidx)
+        if ty == -1 or rx == -1:
+            bboxs.append(None)
+        else:
+            bboxs.append((lx, ty, rx, by))
+    assert len(bboxs) == len(concept_list)
+    return cls_idx, concept_list, bboxs

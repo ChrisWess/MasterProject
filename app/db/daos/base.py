@@ -1140,6 +1140,34 @@ class BaseDAO(AbstractDAO):
                 self._projection_dict.clear()
             self._query_matcher.clear()
 
+    def list_nested_ids(self, entity_id, generate_response=False, db_session=None):
+        """
+        List all nested IDs of the corresponding nesting level of the entity with given id
+        :param generate_response:
+        :param db_session:
+        :param entity_id: Id of DB entity to find
+        :return: list of nested IDs if found, None otherwise
+        """
+        if self.location:
+            id_key = '_id'
+            projection = self.build_projection(id_key)
+            try:
+                self._query_matcher[id_key] = entity_id
+                result = self.collection.find(self._query_matcher, projection, session=db_session)
+                if generate_response:
+                    result = self.to_response([str(obj[id_key]) for obj in self._nested_get(next(result))],
+                                              validate=False)
+                    result['model'] += ' IDs'
+                    return result
+                else:
+                    return [obj[id_key] for obj in self._nested_get(next(result))]
+            finally:
+                self._query_matcher.clear()
+                self._helper_list.clear()
+                projection.clear()
+        else:
+            raise NotImplementedError('This is only possible for DAOs referring to nested documents!')
+
     def find_many_nested(self, ids, projection=None, generate_response=False, db_session=None):
         """
         Find all nested DB documents that match an id in array "ids".

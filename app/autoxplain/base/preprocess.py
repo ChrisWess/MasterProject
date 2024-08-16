@@ -234,7 +234,7 @@ def load_glove_vectors(glove_file):
 
 
 uncommon_words = {'wingbar', 'wingbars', 'cheek-patch', 'tail-feathers', 'retrice',
-                  'retrices', 'superciliary', 'superciliaries'}
+                  'retrices', 'superciliary', 'superciliaries', 'uppertail'}
 
 
 def get_emb_matrix(vocab, glove_file, emb_size):
@@ -291,6 +291,11 @@ def concepts_to_word_vectors(concept_dict, vocab, emb_size=50):
                 widx2 = vocab_map['feather']
                 vector_value = vector_value + v_embed[widx] + v_embed[widx2]
                 continue
+            if 'uppertail' == word:
+                widx = vocab_map['top']
+                widx2 = vocab_map['tail']
+                vector_value = vector_value + v_embed[widx] + v_embed[widx2]
+                continue
             vector_value = vector_value + v_embed[vocab_map[word]]
         phrase_vectors[idx] = vector_value
     np.save('data/concept_word_phrase_vectors.npy', phrase_vectors)
@@ -298,6 +303,7 @@ def concepts_to_word_vectors(concept_dict, vocab, emb_size=50):
 
 
 if __name__ == '__main__':
+    # Before preprocessing, make sure the concept counts per object are updated: PUT /stats/concept/imageConcepts
     config = config.Production if 'PRODUCTION' in os.environ else config.Debug
     db_client = MongoClient(config.MONGODB_DATABASE_URI).xplaindb
     selected_concepts_mapping, extracted_concepts, vocab_words, class_dict = extract_simple_concepts(db_client)

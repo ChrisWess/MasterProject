@@ -184,7 +184,7 @@ class CCNN(BaseClassifier):
             x = self.maxpool(x)
         x = self.concept_kernels(x)
         x = self.dropout(x)
-        return x  # Resulting feature maps are only 3x3 in width and height, because of additional max-pooling.
+        return x  # Resulting feature maps are only 3x3 in width and height when using additional max-pooling.
 
     def classify(self, x: torch.Tensor) -> torch.Tensor:
         return self.classifier(x)
@@ -269,8 +269,8 @@ class CCNN(BaseClassifier):
                 x = x.unsqueeze(0)
             x = self.classify(self.global_avg_pool(self(x)))
             pred_idxs = self.determine_multi(x).cpu()
-            confidences = F.softmax(x.cpu(), dim=0).gather(1, pred_idxs.unsqueeze(-1)).squeeze()
-            return pred_idxs, confidences
+            confidences = F.softmax(x, dim=0).gather(1, pred_idxs.unsqueeze(-1)).squeeze()
+            return pred_idxs, torch.atleast_1d(confidences).cpu()
 
     def get_concept_feature_maps(self, x):
         with torch.no_grad():
@@ -288,6 +288,19 @@ class CCNN(BaseClassifier):
             conf, idxs = x.topk(3, dim=1)
             return idxs.cpu(), conf.cpu()
 
+    def infer_complete(self, x):
+        with torch.no_grad():
+            x = torch.atleast_3d(x.to(self.device, torch.float32))
+            if x.ndim == 3:
+                x = x.unsqueeze(0)
+            fms = self(x)  # concept feature maps
+            pooled = self.global_avg_pool(fms)
+            x = self.classify(pooled)
+            class_idxs = self.determine_multi(x)
+            class_conf = F.softmax(x, dim=0).gather(1, class_idxs.unsqueeze(-1)).squeeze()
+            con_conf, con_idxs = F.softmax(pooled, dim=1).topk(3, dim=1)
+            return fms.cpu(), class_idxs.cpu(), torch.atleast_1d(class_conf).cpu(), con_idxs.cpu(), con_conf.cpu()
+
 
 # Initialize the network model and training datasets and parameters on startup
 train_bs = 32
@@ -302,15 +315,18 @@ dset = CUBDataset.from_file(*dset_args)
 # Load model if it exists
 model_save_dir = oxp_root_dir / 'model_save'
 model_path = model_save_dir / 'train_0/accuracy_highscore.pt'
-if model_path.exists():
-    resnet = torchvision.models.resnet101()
-    resnet_feat_extractor = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool, resnet.layer1,
-                                          resnet.layer2, resnet.layer3, resnet.layer4)
-    ccnn_net = CCNN(dset.num_concepts, dset.num_classes, resnet_feat_extractor, train_bs, conv_base_out_fms=2048)
-    ccnn_net.load(model_path)
+if dset is None:
+    ccnn_net = None
 else:
-    resnet = torchvision.models.resnet101(net_weights)
-    resnet_feat_extractor = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool, resnet.layer1,
-                                          resnet.layer2, resnet.layer3, resnet.layer4)
-    ccnn_net = CCNN(dset.num_concepts, dset.num_classes, resnet_feat_extractor, train_bs, conv_base_out_fms=2048)
-ccnn_net.train(False)
+    if model_path.exists():
+        resnet = torchvision.models.resnet101()
+        resnet_feat_extractor = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool, resnet.layer1,
+                                              resnet.layer2, resnet.layer3, resnet.layer4)
+        ccnn_net = CCNN(dset.num_concepts, dset.num_classes, resnet_feat_extractor, train_bs, conv_base_out_fms=2048)
+        ccnn_net.load(model_path)
+    else:
+        resnet = torchvision.models.resnet101(net_weights)
+        resnet_feat_extractor = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool, resnet.layer1,
+                                              resnet.layer2, resnet.layer3, resnet.layer4)
+        ccnn_net = CCNN(dset.num_concepts, dset.num_classes, resnet_feat_extractor, train_bs, conv_base_out_fms=2048)
+    ccnn_net.train(False)

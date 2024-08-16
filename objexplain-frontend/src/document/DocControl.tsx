@@ -208,6 +208,13 @@ const DocControlPanel: FC = () => {
         link.click();
     }
 
+    const autoAnnotate = () => {
+        // TODO: Show warning dialog, if user wants to replace previous annotations (except explanations)
+        putRequest('idocAutoAnno', undefined, idoc?._id).then(data => {
+            // TODO: reload page
+        })
+    }
+
     useEffect(() => {
         if (idoc) {
             mapLabels(idoc).then(lm => lm && dispatch(setLabelMap(lm)));
@@ -233,6 +240,8 @@ const DocControlPanel: FC = () => {
                              style={{paddingBottom: 10}}/>
             <Button sx={{width: '100%', mb: 1}} variant={'outlined'} onClick={onDownloadDocument}>Download File
                 Data</Button>
+            <Button sx={{width: '100%', mb: 1}} variant={'outlined'} onClick={autoAnnotate}>Apply Model-assisted
+                Labeling</Button>
             <Divider sx={{my: 1}}/>
             {!!objList && objList}
             <AlertMessage content={alertContent} setContent={setAlertContent} severity={alertSeverity}

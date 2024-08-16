@@ -301,7 +301,8 @@ class AnnotationDAO(JoinableDAO):
             cidx += 1
         return annotation, cidx
 
-    def from_concepts(self, concept_word_idx_lists, main_category, user_id, generate_response=False, db_session=None):
+    def from_concepts(self, concept_word_idx_lists, main_category, user_id,
+                      return_entity=False, generate_response=False, db_session=None):
         # concept_word_idx_lists list is reused as datastructure in this method
         idx = 0
         for cword_idxs in concept_word_idx_lists:
@@ -406,15 +407,21 @@ class AnnotationDAO(JoinableDAO):
         self._helper_list.append('.')
         annotation += '.'
         mask.append(-1)
-        anno = Annotation(text=annotation, tokens=self._helper_list.copy(),
-                          concept_mask=mask, concept_ids=concept_ids, created_by=user_id).to_dict()
-        if subj_concepts is None:
-            anno['concepts'] = concepts
+        if return_entity and not generate_response:
+            anno = Annotation(id=ObjectId(), text=annotation, tokens=self._helper_list.copy(),
+                              concept_mask=mask, concept_ids=concept_ids, created_by=user_id)
+            self._helper_list.clear()
+            return anno
         else:
-            subj_concepts.extend(concepts)
-            anno['concepts'] = subj_concepts
-        self._helper_list.clear()
-        return self.to_response(anno) if generate_response else anno
+            anno = Annotation(text=annotation, tokens=self._helper_list.copy(),
+                              concept_mask=mask, concept_ids=concept_ids, created_by=user_id).to_dict()
+            if subj_concepts is None:
+                anno['concepts'] = concepts
+            else:
+                subj_concepts.extend(concepts)
+                anno['concepts'] = subj_concepts
+            self._helper_list.clear()
+            return self.to_response(anno) if generate_response else anno
 
     def push_annotation(self, obj_id, doc_id, anno_entity, proj_id=None, generate_response=False, db_session=None):
         # This trusts the client, who calls this method, that the data in the annotation entity is consistent for

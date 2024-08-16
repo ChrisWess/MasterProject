@@ -173,6 +173,12 @@ def update_bbox_validated():
     return ObjectDAO().update_bbox(object_id, bbox, generate_response=True)
 
 
+@application.route('/object/replace', methods=['PUT'])
+def replace_objects():
+    # TODO: create
+    pass
+
+
 @application.route('/object/label', methods=['PUT'])
 def update_object_label():
     args = request.json
@@ -228,6 +234,7 @@ def update_to_new_label():
 def delete_object_by_id(object_id):
     try:
         response = ObjectDAO().delete_nested_doc_by_id(ObjectId(object_id), generate_response=True)
+        # TODO: delete visual features of the object (in all deletion methods)
         application.logger.info(f"Detected object with ID {object_id} has been deleted")
         return response
     except InvalidId:

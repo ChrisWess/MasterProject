@@ -42,6 +42,7 @@ def count_concepts_by_label():
 
 @application.route('/stats/concept/imageConcepts', methods=['PUT'])
 def force_vectorize_image_concept_update():
+    # TODO: make sure removed images are deleted from stats
     ImageConceptCountVectorizerDAO().update(force_update=True)
     return 'Updated Stats!'
 

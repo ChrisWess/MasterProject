@@ -170,7 +170,7 @@ const AnnotationControlPanel: FC = () => {
     }, [conceptSubstrings, features, featuresVis])
 
     const addUpdateConceptDynamic = () => {
-        annotation && putRequest('/annotation',
+        annotation && putRequest('annotation',
             {
                 annoId: annotation._id,
                 tokenStart: markedWords[0],
@@ -199,7 +199,7 @@ const AnnotationControlPanel: FC = () => {
     }
 
     const removeConcept = () => {
-        annotation && deleteRequest(`/annotation/${annotation._id}/removeConcept/${selectedConcept}`)
+        annotation && deleteRequest(`annotation/${annotation._id}/removeConcept/${selectedConcept}`)
             .then(data => {
                 if (data) {
                     dispatch(removeConceptAt(selectedConcept!))
