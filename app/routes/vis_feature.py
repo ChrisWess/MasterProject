@@ -94,15 +94,10 @@ def validate_visual_feature(annotation_id, concept_id, bboxs):
         err_msg = "The concept ID you provided is not present in the given annotation!"
         application.logger.error(err_msg)
         abort(400, err_msg)
-    try:
-        parent_bb = (obj['tlx'], obj['tly'], obj['brx'], obj['bry'])
-        check_bbs = tuple((tlx + parent_bb[0], tly + parent_bb[1], brx + parent_bb[0], bry + parent_bb[1])
-                          for tlx, tly, brx, bry in bboxs)
-        VisualFeatureDAO.validate_bboxs_fit_into_parent(check_bbs, parent_bb)
-    except ValueError as e:
-        err_msg = str(e)
-        application.logger.error(err_msg)
-        abort(400, err_msg)
+    parent_bb = (obj['tlx'], obj['tly'], obj['brx'], obj['bry'])
+    check_bbs = tuple((tlx + parent_bb[0], tly + parent_bb[1], brx + parent_bb[0], bry + parent_bb[1])
+                      for tlx, tly, brx, bry in bboxs)
+    VisualFeatureDAO.validate_bboxs_fit_into_parent(check_bbs, parent_bb)
     return obj['_id']
 
 
@@ -136,7 +131,12 @@ def prepare_add_or_update(args):
         abort(404, err_msg)
     try:
         concept_id = ObjectId(args["conceptId"])
-        obj_id = validate_visual_feature(anno_id, concept_id, bboxs)
+        try:
+            obj_id = validate_visual_feature(anno_id, concept_id, bboxs)
+        except ValueError as e:
+            err_msg = str(e)
+            application.logger.error(err_msg)
+            abort(400, err_msg)
         return anno_id, concept_id, obj_id, bboxs
     except InvalidId:
         err_msg = "The concept ID you provided is not a valid ID!"

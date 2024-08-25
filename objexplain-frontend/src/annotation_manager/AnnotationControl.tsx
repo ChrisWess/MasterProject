@@ -213,6 +213,14 @@ const AnnotationControlPanel: FC = () => {
             })
     }
 
+    const removeAnnotation = () => {
+        annotation && deleteRequest(`annotation/${annotation._id}`)
+            .then(data => {
+                // TODO: Send back to Object View Page after submitting and create a dialog that user has to
+                //   confirm his decision to prevent misclicks
+            })
+    }
+
     const expandedConcept = useMemo(() => {
         if (isConceptExpanded && conceptInfo) {
             return <>
@@ -298,6 +306,8 @@ const AnnotationControlPanel: FC = () => {
             {expandedConcept}
             <Divider sx={{mt: 3}}/>
             <Box sx={{overflow: 'auto', maxHeight: 300}}>{featureList}</Box>
+            <Button sx={{width: '100%', mt: 1, mb: 1}} variant={'outlined'} onClick={removeAnnotation}>Delete
+                Annotation</Button>
             <AlertMessage content={alertContent} setContent={setAlertContent} severity={alertSeverity}
                           displayTime={6000}/>
         </Box>

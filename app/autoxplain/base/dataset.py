@@ -53,7 +53,7 @@ class CUBDataset(Dataset):
                  apply_augment_transforms=True, validation=False):
         self.classes = classes
         # defining the indices of the image dataset
-        validate_every = 2
+        validate_every = 10
         val_shift = 1
         if validation:
             self.img_ids = tuple(
@@ -155,6 +155,12 @@ class CUBDataset(Dataset):
         self._query.clear()
         self._projection.clear()
         return idoc
+
+    def preprocess_single_pil_img(self, img):
+        img = self.convert_and_resize(img).unsqueeze(0)
+        if self.preprocess_transforms is not None:
+            return self.preprocess_transforms(img)
+        return img
 
     def load_torch_image(self, obj_id):
         idoc = self._load_img_by_obj_id(obj_id)

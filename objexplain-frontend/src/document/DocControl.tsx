@@ -209,10 +209,20 @@ const DocControlPanel: FC = () => {
     }
 
     const autoAnnotate = () => {
-        // TODO: Show warning dialog, if user wants to replace previous annotations (except explanations)
-        putRequest('idocAutoAnno', undefined, idoc?._id).then(data => {
-            // TODO: reload page
-        })
+        // TODO: Show warning dialog, if user wants to replace previous annotations (except explanation texts)
+        if (idoc !== undefined) {
+            putRequest('idocAutoAnno', undefined, idoc._id).then(data => {
+                if (data) {
+                    const newObjs = data.result.updatedTo.set.objects
+                    const newIdoc = {
+                        ...idoc, objects: newObjs
+                    }
+                    console.log(idoc)
+                    console.log(newIdoc)
+                    dispatch(setDoc(newIdoc))
+                }
+            })
+        }
     }
 
     useEffect(() => {

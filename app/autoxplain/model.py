@@ -268,9 +268,9 @@ class CCNN(BaseClassifier):
             if x.ndim == 3:
                 x = x.unsqueeze(0)
             x = self.classify(self.global_avg_pool(self(x)))
-            pred_idxs = self.determine_multi(x).cpu()
+            pred_idxs = self.determine_multi(x)
             confidences = F.softmax(x, dim=0).gather(1, pred_idxs.unsqueeze(-1)).squeeze()
-            return pred_idxs, torch.atleast_1d(confidences).cpu()
+            return pred_idxs.cpu(), torch.atleast_1d(confidences).cpu()
 
     def get_concept_feature_maps(self, x):
         with torch.no_grad():

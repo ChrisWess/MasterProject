@@ -8,7 +8,7 @@ from flask import abort
 from app import application, fs
 from app.autoxplain.infer import classify_object_images, identify_object_concepts, show_dset, \
     highlight_filter_activation_masks, generate_full_annotation_data
-from app.autoxplain.model import dset
+from app.autoxplain.model import oxp_model_data_dir, dset_args
 from app.autoxplain.train import run_ccnn_training
 from app.db.daos.annotation_dao import AnnotationDAO
 from app.db.daos.corpus_dao import CorpusDAO
@@ -18,6 +18,7 @@ from app.db.daos.user_dao import UserDAO
 from app.db.daos.vis_feature_dao import VisualFeatureDAO
 from app.db.models.object import DetectedObject
 from app.preproc.object import detect_objects
+from app.routes.vis_feature import validate_visual_feature
 
 
 @application.route('/train', methods=['GET'])
@@ -64,6 +65,14 @@ def show_concept_masks():
     return [cd[1] for cd in concept_data]
 
 
+def get_label_id_by_ccnn_idx(cls_idx):
+    fpath = oxp_model_data_dir / dset_args[0]
+    with fpath.open() as f:
+        for idx, line in enumerate(f):
+            if cls_idx == idx:
+                return ObjectId(line.strip())
+
+
 @application.route('/idocAutoAnno/<doc_id>', methods=['PUT'])
 def autoxplain_image(doc_id=None):
     try:
@@ -86,14 +95,25 @@ def autoxplain_image(doc_id=None):
             bbox = next(detect_objects(img))[0]
         except StopIteration:
             return abort(400, "No objects could be detected in the image!")
-        crop = dset.convert_and_resize(img.crop(bbox)).unsqueeze(0)
+        crop = img.crop(bbox)
         cls_idx, concept_token_lists, bboxs = generate_full_annotation_data(crop)
+        for i, bb in enumerate(bboxs):
+            bboxs[i] = list(bb)
         concept_token_sets = []
-        for concept_tokens in concept_token_sets:
+        for concept_tokens in concept_token_lists:
             concept_token_sets.append(set(concept_tokens))
-        label = LabelDAO().find_by_index(cls_idx, projection=('_id', 'categories'))
-        label_id = label['_id']
+        label_id = get_label_id_by_ccnn_idx(cls_idx)
+        if label_id is None:
+            return abort(400, "Error in remote file (Class Index Mapping File)!")
+        categories = LabelDAO().find_by_id(label_id, projection='categories')
+        if categories is None:
+            return abort(400, "Label ID in class index mapping file is invalid!")
+        categories = categories['categories']
         new_obj['labelId'] = label_id
+        new_obj['tlx'] = bbox[0]
+        new_obj['tly'] = bbox[1]
+        new_obj['brx'] = bbox[2]
+        new_obj['bry'] = bbox[3]
         new_obj['annotations'] = AnnotationDAO().prepare_annotations(annos, label_id, skip_val_errors=True)
         has_new_concept = False
         for tokens in concept_token_lists:
@@ -108,7 +128,7 @@ def autoxplain_image(doc_id=None):
                 has_new_concept = True
             tokens[end_idx] = doc["index"]
         user_id = UserDAO().get_current_user_id()
-        generated_anno = AnnotationDAO().from_concepts(concept_token_lists, label['categories'][0],
+        generated_anno = AnnotationDAO().from_concepts(concept_token_lists, categories[0],
                                                        user_id, return_entity=True)
         # add new annotation with all detected concepts
         if has_new_concept:
@@ -124,20 +144,27 @@ def autoxplain_image(doc_id=None):
         result = ImgDocDAO().replace_objects(doc_id, new_objs, old_obj_ids, generate_response=True)
         curr_anno_concept_token_set = set()
         for anno in new_obj['annotations']:
+            anno_id = anno['_id']
             num_concepts = len(anno['conceptIds'])
-            concept_id = 0
-            for token, mask_id, cid in zip(anno['tokens'], anno["conceptMask"], anno['conceptIds']):
-                if concept_id == mask_id:
+            concept_idx = 0
+            for token, mask_id in zip(anno['tokens'], anno["conceptMask"]):
+                if concept_idx == mask_id:
                     curr_anno_concept_token_set.add(token)
-                else:
+                elif curr_anno_concept_token_set:
+                    concept_id = anno['conceptIds'][concept_idx]
                     for i, token_set in enumerate(concept_token_sets):
-                        print(token_set)
-                        print(curr_anno_concept_token_set)
                         if token_set.issubset(curr_anno_concept_token_set):
-                            VisualFeatureDAO().add(new_obj['_id'], anno['_id'], cid, [bboxs[i]])
+                            bbs = [bboxs[i]]
+                            try:
+                                obj_id = validate_visual_feature(anno_id, concept_id, bbs)
+                                VisualFeatureDAO().add(obj_id, anno_id, concept_id, bbs)
+                            except ValueError as e:
+                                err_msg = (f"Could not validate visual feature with Bounding Box defintions {bbs} of "
+                                           f"annotation {0} with concept ID {0}!\nRoot Error: {e}")
+                                application.logger.error(err_msg)
                     curr_anno_concept_token_set.clear()
-                    concept_id += 1
-                    if concept_id >= num_concepts:
+                    concept_idx += 1
+                    if concept_idx >= num_concepts:
                         break
         return result
     except InvalidId:

@@ -99,6 +99,7 @@ const UserDashboard: FC = () => {
             let delId = projectData![openDelete]._id
             projectData!.splice(openDelete, 1)
             setProjectData(projectData!);
+            // TODO: freeze frontend with loading animation until http response has been send by server
             let result = await deleteRequest('project', delId, undefined, true)
             console.log('Deleted Project with ID ' + delId)
             setOpenDelete(-1)

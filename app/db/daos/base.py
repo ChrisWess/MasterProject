@@ -6,6 +6,7 @@ from importlib import import_module
 from json import dumps, loads
 from typing import Iterable
 
+from bson import ObjectId
 from pymongo import ASCENDING, DESCENDING
 from pymongo.client_session import ClientSession
 from werkzeug.datastructures.structures import ImmutableMultiDict, ImmutableDict
@@ -1335,9 +1336,14 @@ class BaseDAO(AbstractDAO):
                         upd_res_field = result['updatedTo'][updop[1:]] = {}
                         for updfield, val in updvals.items():
                             if self.location:
-                                dot_idx = updfield.rindex('.')
-                                updfield = updfield[dot_idx + 1:]
-                            upd_res_field[updfield] = str(val)
+                                try:
+                                    dot_idx = updfield.rindex('.')
+                                    updfield = updfield[dot_idx + 1:]
+                                except ValueError:
+                                    pass
+                            if isinstance(val, ObjectId):
+                                val = str(val)
+                            upd_res_field[updfield] = val
                 else:
                     result['at'] = deepcopy(query)
                     result['updatedTo'] = deepcopy(upd_cmd)

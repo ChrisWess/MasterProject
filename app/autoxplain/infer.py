@@ -154,7 +154,8 @@ def generate_full_annotation_data(img, mask_thresh=0.95):
     # TODO: handle new parameter that allows inputting all concept indices from all annotations for the image
     #  in order to create a bounding box for all these occurring concepts.
     #  This requires mapping an explanation's concept to the best matching feature map index.
-    img = _pil_imgs_to_tensor(img)
+    orig_img_size = img.size
+    img = dset.preprocess_single_pil_img(img)
     fms, cls_idx, _, con_idxs, _ = ccnn_net.infer_complete(img)  # omit confidence values
     cls_idx = cls_idx.item()
     con_idxs = con_idxs.squeeze()
@@ -173,10 +174,10 @@ def generate_full_annotation_data(img, mask_thresh=0.95):
         mask = concept_filter_map >= max_activation * mask_thresh
         interp_mask = torch.reshape(mask, (1, 1, *mask.shape)).to(dtype=torch.float32)
         # interpolate the mask to fit to image size and invert mask in order to apply visual update
-        interp_mask = interpolate(interp_mask, img.shape[1:3], mode='bilinear').squeeze().to(dtype=bool)
-        lx = img.shape[2]
+        interp_mask = interpolate(interp_mask, orig_img_size, mode='bilinear').squeeze().to(dtype=bool)
+        lx = orig_img_size[0]
         ty = rx = by = -1
-        for ridx, row in enumerate(interp_mask):
+        for ridx, row in enumerate(interp_mask.T):
             if row.sum().item() > 0:
                 if ty == -1:
                     ty = ridx

@@ -102,6 +102,7 @@ def get_annotation_from_corpus_idxs():
 
 @application.route('/annotation/annotator/<annotator_id>', methods=['DELETE'])
 def delete_annotations_by_annotator(annotator_id):
+    # TODO: during deletion, also remove corresponding visual features
     try:
         return AnnotationDAO().delete_all_by_annotator(ObjectId(annotator_id), generate_response=True)
     except InvalidId:

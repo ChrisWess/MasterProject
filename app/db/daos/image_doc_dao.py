@@ -19,6 +19,7 @@ from app.db.daos.vis_feature_dao import VisualFeatureDAO
 from app.db.models.image_doc import ImgDoc
 from app.db.models.object import DetectedObject
 from app.db.models.payloads.image_doc import ImagePayload
+from app.db.models.payloads.object import ObjectPayload
 from app.db.stats.daos.image_prios import PrioStatsDAO
 from app.db.stats.daos.image_stats import ImageStatsDAO
 from app.db.stats.daos.project_progress import ProjectProgressDAO
@@ -648,7 +649,12 @@ class ImgDocDAO(JoinableDAO):
 
     def replace_objects(self, doc_id, new_objects, old_object_ids=None, generate_response=False, db_session=None):
         VisualFeatureDAO().delete_features_by_image(doc_id, old_object_ids, db_session=db_session)
-        return self._replace_objects(doc_id, new_objects, generate_response=generate_response, db_session=db_session)
+        result = self._replace_objects(doc_id, new_objects, generate_response=generate_response, db_session=db_session)
+        if generate_response:
+            object_res = result['result']['updatedTo']['set']['objects']
+            for i, obj in enumerate(object_res):
+                object_res[i] = ObjectPayload(**obj).to_dict()
+        return result
 
     @dao_update(update_many=False)
     def _replace_objects(self, doc_id, new_objects):
