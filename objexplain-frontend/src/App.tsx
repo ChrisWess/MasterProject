@@ -22,7 +22,6 @@ const router = createBrowserRouter(
         <Route path="/" element={<RootLayout/>}>
             <Route index element={<Navigate to="/dashboard" replace/>}/>
             <Route path="project" element={<ProjectLayout/>}>
-                <Route index element={<Navigate to="/dashboard" replace/>}/>
                 <Route path=":projectName" element={<ProjectMainPage/>} loader={loadProject}/>
                 <Route path=":projectName/idoc/:docId" element={<ProjectIDocPage/>} loader={loadIDoc}/>
                 <Route path=":projectName/idoc/:docId/:objIdx" element={<ObjectPage/>}/>

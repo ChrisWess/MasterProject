@@ -183,7 +183,7 @@ const UserDashboard: FC = () => {
                 component="main"
                 sx={{
                     flexGrow: 1,
-                    height: '92.9vh',
+                    maxHeight: '100%',
                     overflow: 'auto',
                 }}
             >

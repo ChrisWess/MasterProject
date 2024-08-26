@@ -217,8 +217,6 @@ const DocControlPanel: FC = () => {
                     const newIdoc = {
                         ...idoc, objects: newObjs
                     }
-                    console.log(idoc)
-                    console.log(newIdoc)
                     dispatch(setDoc(newIdoc))
                 }
             })

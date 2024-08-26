@@ -59,7 +59,7 @@ class SpacyTokenizer(Tokenizer):
     def __init__(self, toknizr_id='spacy', keep_punct=True, uncased=True):
         super().__init__(toknizr_id, keep_punct, uncased, False)
         if toknizr_id == 'spacy':
-            # in case of OSError, in your python venv, exec:> python -m spacy download en_core_web_sm
+            # in case of OSError, in your python venv, execute this:-> python -m spacy download en_core_web_sm
             lang_model = 'en_core_web_sm'
         else:
             lang_model = toknizr_id.split('=')[1]

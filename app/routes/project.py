@@ -53,8 +53,12 @@ def find_all_projects_by_current_user():
 @application.route('/project/<project_id>/randfetch/<path:num_res>', methods=['GET'])
 def randomly_fetch_new_idocs(project_id, num_res):
     try:
-        return ProjectDAO().random_fetch(ObjectId(project_id), int(num_res), projection=request.args,
-                                         generate_response=True)
+        result = ProjectDAO().random_fetch(ObjectId(project_id), int(num_res), projection=request.args,
+                                           generate_response=True)
+        data = result['result']
+        if type(data) is dict:
+            result['result'] = [data]
+        return result
     except InvalidId:
         err_msg = "The Project ID you provided is not a valid ID!"
         application.logger.error(err_msg)

@@ -329,7 +329,7 @@ class ObjectDAO(JoinableDAO):
     def update_bbox(self, obj_id, bbox):
         self.add_query("_id", obj_id)
         now = datetime.now()
-        upd_prefix = "objects.$[]."
+        upd_prefix = "objects.$."
         for coord, val in zip(self.bbox_alias_mapping.values(), bbox):
             self._set_field_op[upd_prefix + coord] = val
         self._set_field_op['updatedAt'] = now
@@ -339,8 +339,11 @@ class ObjectDAO(JoinableDAO):
     @dao_update(update_many=False)
     def update_label(self, obj_id, label_id):
         self.add_query("_id", obj_id)
-        self.add_update('labelId', label_id)
-        self.add_update('updatedAt', datetime.now())
+        self._set_field_op['objects.$.labelId'] = label_id
+        now = datetime.now()
+        self._set_field_op['updatedAt'] = now
+        self._set_field_op['objects.$.updatedAt'] = now
+        self._update_commands['$set'] = self._set_field_op
 
     def delete_all(self, generate_response=False, db_session=None):
         raise NotImplementedError

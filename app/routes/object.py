@@ -226,7 +226,7 @@ def update_to_new_label():
         err_msg = "The Detected Object ID you provided is not a valid ID!"
         application.logger.error(err_msg)
         abort(404, err_msg)
-    label_id = LabelDAO().add(args['label'], categories)['_id']
+    label_id = LabelDAO().add(args['label'], categories)[1]['_id']
     return ObjectDAO().update_label(object_id, label_id, generate_response=True)
 
 

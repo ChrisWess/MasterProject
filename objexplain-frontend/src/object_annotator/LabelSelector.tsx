@@ -141,8 +141,9 @@ const LabelSelect: FC<LabelSelectProps> = ({
                             {objectId: objId, labelId: newLabelId, categories: selectedCategories})
                     }
                 } else {
+                    let initialCategories = selectedCategories.length ? selectedCategories : assignedCategories
                     data = await postRequest('object/label/new',
-                        {objectId: objId, label: labelValue, categories: selectedCategories})
+                        {objectId: objId, label: labelValue, categories: initialCategories})
                 }
                 if (data) {
                     let newLabelId = data.result.updatedTo.set.labelId;
